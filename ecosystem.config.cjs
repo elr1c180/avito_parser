@@ -2,7 +2,7 @@ module.exports = {
   apps: [
     {
       name: "avito-admin",
-      script: "python",
+      script: "python3",
       args: "-m gunicorn config.wsgi:application --bind 0.0.0.0:8000",
       cwd: "./",
       interpreter: "none",
@@ -11,7 +11,7 @@ module.exports = {
     {
       name: "avito-bot",
       script: "bot.py",
-      interpreter: "python",
+      interpreter: "python3",
       cwd: "./",
     },
   ],
