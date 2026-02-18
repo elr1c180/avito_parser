@@ -169,6 +169,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     disable_web_page_preview=True,
                 )
             await asyncio.sleep(SEND_INTERVAL_SEC)
+        await asyncio.sleep(PAUSE_BETWEEN_BRANDS_SEC)
 
 
 def run_periodic_ads() -> None:
@@ -223,3 +224,4 @@ def run_periodic_ads() -> None:
                 else:
                     _send_telegram_message(token, user.chat_id, caption)
                 time.sleep(SEND_INTERVAL_SEC)
+        time.sleep(PAUSE_BETWEEN_BRANDS_SEC)
