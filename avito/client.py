@@ -1,7 +1,10 @@
+import logging
 import time
 from typing import Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from .proxy import Proxy
 
@@ -55,5 +58,7 @@ class HttpClient:
                 return response
             except httpx.RequestError as e:
                 last_exc = e
+                logger.warning("Avito request attempt %s/%s failed: %s", attempt, self.max_retries, e)
                 time.sleep(self.retry_delay)
+        logger.error("Avito request failed after %s retries: %s", self.max_retries, last_exc)
         raise RuntimeError("HTTP request failed after retries") from last_exc

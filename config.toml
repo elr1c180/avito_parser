@@ -34,4 +34,4 @@ bot_password = ""
 # На сервере: укажите IP и/или домен, например ["1.2.3.4", "myserver.local"]
 allowed_hosts = ["*"]
 secret_key = "смените-на-случайную-длинную-строку-в-продакшене"
-debug = false
+debug = true

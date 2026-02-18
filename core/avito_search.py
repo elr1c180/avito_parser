@@ -46,9 +46,9 @@ def search_ads(
     max_price: Optional[int] = None,
     pages: int = 1,
     max_age_minutes: Optional[int] = 10,
-    timeout: int = 20,
-    max_retries: int = 2,
-    retry_delay: int = 2,
+    timeout: int = 60,
+    max_retries: int = 5,
+    retry_delay: int = 5,
     proxy_string: Optional[str] = None,
     proxy_change_url: Optional[str] = None,
 ) -> List[AvitoAd]:

@@ -112,7 +112,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             )
             continue
 
-        await context.bot.send_message(chat_id=chat_id, text=f"Ищу {brand.name}… (объявления за последний час)")
+        await context.bot.send_message(chat_id=chat_id, text=f"Ищу {brand.name}…")
         try:
             ads = await asyncio.to_thread(
                 search_ads,
