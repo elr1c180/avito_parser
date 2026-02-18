@@ -3,9 +3,17 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-key-change-in-production")
-DEBUG = os.environ.get("DEBUG", "false").lower() in ("1", "true", "yes")
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+# Настройки из config.toml (секция [django]); при отсутствии файла — из os.environ
+try:
+    from app_config import get_django_settings
+    _django = get_django_settings()
+    SECRET_KEY = _django["SECRET_KEY"]
+    DEBUG = _django["DEBUG"]
+    ALLOWED_HOSTS = _django["ALLOWED_HOSTS"]
+except Exception:
+    SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-key-change-in-production")
+    DEBUG = os.environ.get("DEBUG", "true").lower() in ("1", "true", "yes")
+    ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
 
 INSTALLED_APPS = [
     "django.contrib.admin",

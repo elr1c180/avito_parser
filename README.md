@@ -1,4 +1,27 @@
-# Avito Parser
+# Avito Parser Bot
+
+Бот для подбора автомобилей с Авито: пользователь выбирает марки и порог цены, получает свежие объявления. Рассылка новых объявлений — каждые 15 минут.
+
+## Конфигурация (один файл)
+
+Вся настройка — в **`config.toml`** в корне проекта. Файлов `.env` нет.
+
+```toml
+[bot]
+token = "ТОКЕН_ОТ_BOTFATHER"
+# telegram_proxy = "http://user:pass@host:port"   # если api.telegram.org заблокирован
+
+[avito]
+proxy_string = "login:password@host:port"
+proxy_change_url = "https://..."   # для мобильного прокси (смена IP)
+
+[django]
+secret_key = "случайная-строка"
+debug = true
+allowed_hosts = ["*"]
+```
+
+Прокси для Avito обязателен для стабильного парсинга. При ошибках парсинга пользователю показывается только: «Требуется замена прокси».
 
 ## Установка
 
@@ -6,14 +29,10 @@
 pip install -r requirements.txt
 ```
 
-## Настройка
-
-1. Скопируй `.env.example` в `.env`
-2. Укажи `TELEGRAM_BOT_TOKEN` — токен бота от @BotFather
-
-## Django админ-панель
+## Админка Django
 
 ```bash
+source venv/bin/activate
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
@@ -21,26 +40,89 @@ python manage.py runserver
 
 Админка: http://127.0.0.1:8000/admin/
 
-10 марок уже созданы: Mercedes, BMW, Toyota, Lada/VAZ, Lexus, Li Xiang, Geely, Changan, Hyundai, Nissan.
+- В разделе **Марки** для каждой марки укажите **Ссылку поиска Avito** (готовая ссылка выдачи с сайта).
+- Пользователей создаёте в **Пользователи Telegram** (пароль, при первом входе бот сохранит chat_id). Выбранные марки отображаются в списке.
 
-Пользователей Telegram создаёшь в админке (раздел «Пользователи Telegram») — укажи пароль, username и chat_id опциональны. При первом входе в бота пользователь введёт пароль, после чего бот сохранит его chat_id и username.
-
-## Бот
+## Запуск бота
 
 ```bash
+source venv/bin/activate
 python bot.py
 ```
 
-## Сервер (PM2)
+- **/start** — вход по паролю, выбор марок, ввод порога цены, первый подбор.
+- **/brands** — изменить выбор марок автомобилей (и при необходимости порог цены).
+- Каждые **15 минут** бот парсит выдачи по маркам и отправляет **только новые** объявления тем, кто подписан на эту марку.
 
-На сервере с Node.js и PM2:
+## Структура проекта
 
-1. `pip install -r requirements.txt`
-2. `python manage.py migrate`
-3. `python manage.py createsuperuser`
-4. `python manage.py collectstatic --noinput`
-5. Создай `.env` с `TELEGRAM_BOT_TOKEN`, `DJANGO_SECRET_KEY`, опционально `ALLOWED_HOSTS=IP_СЕРВЕРА,localhost`
-6. Запуск: `pm2 start ecosystem.config.cjs`
-7. Сохранить при перезагрузке: `pm2 save && pm2 startup`
+- `config.toml` — единственный конфиг (бот, прокси, Django).
+- `app_config.py` — загрузка настроек из config.toml.
+- `avito/` — минимальный парсер Avito (запросы, прокси, разбор выдачи).
+- `core/` — Django-приложение (модели, админка, `avito_search`).
+- `bot/` — логика бота (обработчики, рассылка, расписание).
+- `bot.py` — точка входа (Django setup + запуск бота).
 
-Админка: `http://IP_СЕРВЕРА:8000/admin/`
+## Деплой на сервер (админка по IP, бот и парсинг круглосуточно)
+
+Нужны: **Python 3.10+**, **Node.js** (для PM2). На сервере (VPS/домашний) выполните по шагам.
+
+### 1. Код и зависимости
+
+```bash
+cd /путь/к/avito_parser
+python3 -m venv venv
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+### 2. Конфиг
+
+Отредактируйте **`config.toml`**:
+
+- **`[avito]`** — `tg_token`, `proxy_string`, `proxy_change_url` (и при необходимости `bot_password`).
+- **`[django]`** — для доступа к админке по IP сервера:
+  - `allowed_hosts = ["IP_ВАШЕГО_СЕРВЕРА"]` — например `["192.168.1.10"]` или `["1.2.3.4", "myserver.local"]`;
+  - `secret_key` — замените на длинную случайную строку;
+  - `debug = false` в продакшене.
+
+### 3. БД и суперпользователь
+
+```bash
+source venv/bin/activate
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py collectstatic --noinput
+```
+
+`collectstatic` нужен, чтобы админка отдавала стили (CSS).
+
+### 4. Запуск через PM2
+
+```bash
+npm install -g pm2
+pm2 start ecosystem.config.cjs
+```
+
+Будут запущены:
+
+- **avito-admin** — Django (gunicorn) на порту **8000**, привязка `0.0.0.0` (доступ снаружи по IP).
+- **avito-bot** — Telegram-бот и фоновый парсинг каждые 15 минут.
+
+Проверка: `pm2 status`, логи: `pm2 logs`.
+
+### 5. Админка по IP
+
+В браузере откройте: **`http://IP_СЕРВЕРА:8000/admin/`** (логин/пароль — от `createsuperuser`).
+
+В админке: **Марки** — укажите ссылки поиска Avito; **Пользователи Telegram** — создайте пользователей, после входа в бота сохранится `chat_id`.
+
+### 6. Автозапуск после перезагрузки
+
+```bash
+pm2 startup
+# выполните команду, которую выведет pm2
+pm2 save
+```
+
+Итог: админка доступна по IP:8000, бот и парсинг работают круглосуточно, пока запущен процесс PM2.

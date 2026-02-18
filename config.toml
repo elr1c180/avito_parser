@@ -1,0 +1,37 @@
+[avito]
+tg_token = "8361965499:AAHDPzGrywYE0n43wkkA_Dzr-fNA2fOajVc"
+tg_chat_id = [
+]
+vk_token = ""
+vk_user_id = []
+urls = [
+]
+count = 1
+keys_word_white_list = []
+keys_word_black_list = []
+seller_black_list = []
+max_price = 99999999
+min_price = 0
+geo = ""
+proxy_string = "eGvYsE:raK6bUUUpAdy@mproxy.site:11987"
+proxy_change_url = "https://changeip.mobileproxy.space/?proxy_key=10000a07b7cfb8b2900bcd59b5f6c742"
+pause_general = 1
+pause_between_links = 1
+max_age = 0
+max_count_of_retry = 5
+ignore_reserv = true
+ignore_promotion = false
+one_time_start = false
+one_file_for_link = false
+parse_views = false
+save_xlsx = true
+use_webdriver = false
+cookies_api_key = ""
+# Пароль входа в TG-бота и админку (задайте свой)
+bot_password = ""
+
+[django]
+# На сервере: укажите IP и/или домен, например ["1.2.3.4", "myserver.local"]
+allowed_hosts = ["*"]
+secret_key = "смените-на-случайную-длинную-строку-в-продакшене"
+debug = false
