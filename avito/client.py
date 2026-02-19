@@ -42,15 +42,21 @@ class HttpClient:
 
     def request(self, method: str, url: str, **kwargs: object) -> httpx.Response:
         last_exc = None
+        last_status = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 with self._build_client() as client:
                     response = client.request(method, url, **kwargs)
                 if response.status_code in (401, 403, 429):
+                    last_status = response.status_code
                     self._block_attempts += 1
                     if self._block_attempts >= self.block_threshold:
                         self.proxy.handle_block()
                         self._block_attempts = 0
+                    logger.warning(
+                        "Avito attempt %s/%s: ответ %s (блок/лимит). URL: %s",
+                        attempt, self.max_retries, last_status, url[:80],
+                    )
                     time.sleep(self.retry_delay)
                     continue
                 response.raise_for_status()
@@ -60,5 +66,9 @@ class HttpClient:
                 last_exc = e
                 logger.warning("Avito request attempt %s/%s failed: %s", attempt, self.max_retries, e)
                 time.sleep(self.retry_delay)
-        logger.error("Avito request failed after %s retries. URL: %s. Error: %s", self.max_retries, url, last_exc)
-        raise RuntimeError(f"HTTP request failed after retries. URL: {url}") from last_exc
+        if last_status is not None:
+            msg = f"Avito возвращает {last_status} после {self.max_retries} попыток (блокировка/капча/лимит). URL: {url}"
+        else:
+            msg = f"HTTP request failed after {self.max_retries} retries. URL: {url}"
+        logger.error("Avito request failed. %s. Last error: %s", msg, last_exc)
+        raise RuntimeError(msg) from last_exc
