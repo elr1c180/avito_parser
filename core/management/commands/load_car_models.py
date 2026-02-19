@@ -1,7 +1,8 @@
 """
 Загрузка марок и моделей автомобилей из JSON.
-Формат файла: {"Марка": ["Модель1", "Модель2", ...], ...}
-При создании автоматически заполняется slug для Avito (латиница).
+Формат: {"Марка": ["Модель1", "Модель2", ...], ...}
+Либо с явным slug для Avito: {"Марка": [["A-Class", "a-klass"], "B-Class", ...], ...}
+Элемент может быть строкой (название, slug сгенерируется) или парой [название, slug].
 Использование:
   python manage.py load_car_models
   python manage.py load_car_models --file core/data/car_models.json
@@ -75,12 +76,25 @@ class Command(BaseCommand):
             if created_b or not brand.slug:
                 brand.slug = _to_slug(brand_name) or _to_slug(brand_name.replace(" ", ""))
                 brand.save(update_fields=["slug"])
-            for name in model_names:
+            for item in model_names:
+                if isinstance(item, list):
+                    if len(item) < 1:
+                        continue
+                    name = item[0]
+                    slug_from_json = item[1].strip() if len(item) > 1 and isinstance(item[1], str) else None
+                elif isinstance(item, str):
+                    name = item
+                    slug_from_json = None
+                else:
+                    continue
                 if not name or not isinstance(name, str):
                     continue
                 name = name.strip()
                 model, created = CarModel.objects.get_or_create(brand=brand, name=name)
-                if created or not model.slug:
+                if slug_from_json:
+                    model.slug = slug_from_json[:80]
+                    model.save(update_fields=["slug"])
+                elif created or not model.slug:
                     model.slug = _to_slug(name) or _to_slug(name.replace(" ", ""))
                     model.save(update_fields=["slug"])
                 if created:
