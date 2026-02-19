@@ -11,6 +11,7 @@ from pathlib import Path
 # корень проекта в path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app_config import get_proxy_config
 from avito.client import HttpClient
 from avito.dto import AvitoConfig
 from avito.extract import extract_state_json
@@ -39,7 +40,12 @@ DEFAULT_URL = "https://www.avito.ru/astrahan/avtomobili/toyota/camry?localPriori
 def main():
     URL = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_URL
     print("Запрос:", URL)
-    proxy = build_proxy(AvitoConfig(proxy_string="", proxy_change_url=""))
+    try:
+        proxy_string, proxy_change_url = get_proxy_config()
+    except Exception:
+        proxy_string, proxy_change_url = None, None
+    proxy = build_proxy(AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or ""))
+    print("Прокси из config.toml:", "да" if (proxy_string or proxy_change_url) else "нет")
     client = HttpClient(proxy=proxy, timeout=30, max_retries=2, retry_delay=2)
     response = client.request("GET", URL)
     print("Статус:", response.status_code, "Длина HTML:", len(response.text))
