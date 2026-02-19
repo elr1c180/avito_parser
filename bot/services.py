@@ -9,7 +9,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Optional
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
 from asgiref.sync import sync_to_async
@@ -23,7 +23,21 @@ from core.models import Brand, CarModel, SeenAd, TelegramUser
 # Формат Avito: если у марки в БД есть avito_url — используем его; иначе собираем без суффикса -ASgBAg...
 AVITO_BASE = "https://www.avito.ru"
 AVITO_CARS_SEGMENT = "avtomobili"
-AVITO_QUERY = "localPriority=0&radius=0&s=104&searchRadius=0"
+# Обязательные параметры поиска в каждой ссылке Avito
+AVITO_QUERY_PARAMS = {"localPriority": "0", "radius": "200", "s": "104", "searchRadius": "200"}
+AVITO_QUERY = "&".join(f"{k}={v}" for k, v in AVITO_QUERY_PARAMS.items())
+
+
+def _ensure_avito_query(url: str) -> str:
+    """Добавляет/подменяет в URL параметры localPriority, radius, s, searchRadius."""
+    if not url or not url.startswith("http"):
+        return url
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    for k, v in AVITO_QUERY_PARAMS.items():
+        params[k] = [v]
+    new_query = urlencode(params, doseq=True)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
 
 def _inject_city_into_avito_url(url: str, city_slug: str) -> str:
@@ -52,7 +66,7 @@ def _build_search_url(user, brand, model=None) -> Optional[str]:
             return None
         if user and user.city and (user.city.slug or "").strip():
             url = _inject_city_into_avito_url(url, user.city.slug)
-        return url
+        return _ensure_avito_query(url)
 
     if not user.city or not getattr(brand, "slug", None) or not (brand.slug or "").strip():
         return None
@@ -65,7 +79,7 @@ def _build_search_url(user, brand, model=None) -> Optional[str]:
         path = f"{city_slug}/{AVITO_CARS_SEGMENT}/{brand_slug}/{model_slug}"
     else:
         path = f"{city_slug}/{AVITO_CARS_SEGMENT}/{brand_slug}"
-    return f"{AVITO_BASE}/{path}?{AVITO_QUERY}"
+    return _ensure_avito_query(f"{AVITO_BASE}/{path}?{AVITO_QUERY}")
 
 
 def _user_models_by_brand(user):
