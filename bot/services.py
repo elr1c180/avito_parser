@@ -173,6 +173,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         if not url:
             continue
         label = f"{brand.name} {model.name}" if model else brand.name
+        logging.info("Парсинг Avito: %s → %s", label, url)
         await context.bot.send_message(chat_id=chat_id, text=f"Ищу {label}…")
         try:
             ads = await asyncio.to_thread(

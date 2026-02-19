@@ -2,11 +2,14 @@
 Поиск объявлений на Avito по ссылке (свежие по дате из выдачи).
 Использует пакет avito/ и единый config.toml для прокси.
 """
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional
 
 from pydantic import ValidationError
+
+logger = logging.getLogger(__name__)
 
 from avito.client import HttpClient
 from avito.dto import AvitoConfig
@@ -56,13 +59,16 @@ def search_ads(
     Поиск объявлений по ссылке Avito. При ошибке (блокировка, сеть) пробрасывает исключение.
     max_age_minutes: только объявления, опубликованные не более N минут назад (None — без фильтра).
     """
+    logger.info("Парсинг Avito, URL: %s", url)
     proxy = build_proxy(AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or ""))
     client = HttpClient(proxy=proxy, timeout=timeout, max_retries=max_retries, retry_delay=retry_delay)
     results: List[AvitoAd] = []
     next_url = url
     now_utc = datetime.now(timezone.utc)
 
-    for _ in range(max(1, pages)):
+    for page_num in range(max(1, pages)):
+        if page_num > 0:
+            logger.info("Парсинг Avito, страница %s, URL: %s", page_num + 1, next_url)
         response = client.request("GET", next_url)
         state = extract_state_json(response.text)
         catalog = (
