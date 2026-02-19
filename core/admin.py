@@ -13,8 +13,8 @@ class CityAdmin(admin.ModelAdmin):
 
 @admin.register(Brand)
 class BrandAdmin(admin.ModelAdmin):
-    list_display = ["name", "slug", "avito_url", "avito_path"]
-    search_fields = ["name", "slug", "avito_url", "avito_path"]
+    list_display = ["name", "slug", "avito_suffix", "avito_url", "avito_path"]
+    search_fields = ["name", "slug", "avito_suffix", "avito_url", "avito_path"]
     list_filter = []
 
 

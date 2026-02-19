@@ -1,5 +1,5 @@
 """
-Рассылка объявлений: по запросу и по расписанию (каждые 15 мин).
+Рассылка объявлений: по запросу и по расписанию (каждые 5 мин). Только объявления за последние 10 минут.
 Одно сообщение на объявление; формат: Марка / Модель / Цена / Дата публикации; при наличии — фото.
 При ошибке парсинга пользователю — только «Требуется замена прокси»; полная ошибка пишется в лог.
 """
@@ -9,6 +9,7 @@ import logging
 import time
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
 from asgiref.sync import sync_to_async
@@ -19,30 +20,49 @@ from app_config import get_bot_token, get_proxy_config
 from core.avito_search import AvitoAd, search_ads
 from core.models import Brand, CarModel, SeenAd, TelegramUser
 
-# Формат Avito: регион (slug) + avtomobili + марка (slug) + модель (slug)
-# Пример: .../moskva/avtomobili/mercedes-benz/a-klass-ASgBAgICAkTgtg3omCjitg2enyg?localPriority=0&...
+# Формат Avito: если у марки в БД есть avito_url — используем его; иначе собираем без суффикса -ASgBAg...
 AVITO_BASE = "https://www.avito.ru"
 AVITO_CARS_SEGMENT = "avtomobili"
-# Суффикс после slug модели (категория авто на Авито; у разных марок может отличаться — при необходимости задать в CarModel.avito_suffix)
-AVITO_CAR_MODEL_SUFFIX = "ASgBAgICAkTgtg3omCjitg2enyg"
-AVITO_QUERY = "localPriority=0&radius=0&searchRadius=0"
+AVITO_QUERY = "localPriority=0&radius=0&s=104&searchRadius=0"
+
+
+def _inject_city_into_avito_url(url: str, city_slug: str) -> str:
+    """Подставляет город пользователя в путь Avito (первый сегмент после хоста)."""
+    if not city_slug or not url.startswith("http"):
+        return url
+    city_slug = city_slug.strip().strip("/")
+    parsed = urlparse(url)
+    parts = [p for p in parsed.path.split("/") if p]
+    if not parts:
+        return url
+    parts[0] = city_slug
+    new_path = "/" + "/".join(parts)
+    return urlunparse((parsed.scheme, parsed.netloc, new_path, parsed.params, parsed.query, parsed.fragment))
 
 
 def _build_search_url(user, brand, model=None) -> Optional[str]:
     """
-    Собрать URL поиска: avito.ru/{город_slug}/avtomobili/{марка_slug}/{модель_slug}-SUFFIX.
-    Все slug — латиница (moskva, bmw, m4). Если модель не задана — только марка.
+    Если у марки в БД заполнена «Ссылка поиска Avito» (avito_url) — используем её,
+    подставив город пользователя в путь, если он задан. Иначе собираем URL сами.
     """
+    avito_url = getattr(brand, "avito_url", None)
+    if avito_url and str(avito_url).strip():
+        url = str(avito_url).strip()
+        if not url.startswith("http"):
+            return None
+        if user and user.city and (user.city.slug or "").strip():
+            url = _inject_city_into_avito_url(url, user.city.slug)
+        return url
+
     if not user.city or not getattr(brand, "slug", None) or not (brand.slug or "").strip():
-        return brand.avito_url if getattr(brand, "avito_url", None) else None
+        return None
     city_slug = (user.city.slug or "").strip().strip("/")
     brand_slug = (brand.slug or "").strip().strip("/")
     if not city_slug or not brand_slug:
-        return brand.avito_url if getattr(brand, "avito_url", None) else None
+        return None
     if model and getattr(model, "slug", None) and (model.slug or "").strip():
         model_slug = (model.slug or "").strip().strip("/")
-        suffix = getattr(model, "avito_suffix", None) and (model.avito_suffix or "").strip() or AVITO_CAR_MODEL_SUFFIX
-        path = f"{city_slug}/{AVITO_CARS_SEGMENT}/{brand_slug}/{model_slug}-{suffix}"
+        path = f"{city_slug}/{AVITO_CARS_SEGMENT}/{brand_slug}/{model_slug}"
     else:
         path = f"{city_slug}/{AVITO_CARS_SEGMENT}/{brand_slug}"
     return f"{AVITO_BASE}/{path}?{AVITO_QUERY}"
@@ -55,9 +75,12 @@ def _user_models_by_brand(user):
         result.setdefault(m.brand_id, []).append(m.name)
     return result
 
+
 PROXY_ERROR_MSG = "Требуется замена прокси. Проверьте config.toml (секция [avito])."
-LIMIT_PER_BRAND = 20
-MAX_AGE_MINUTES = 60
+# Все объявления со страницы, без лимита
+LIMIT_PER_BRAND = None
+# Только объявления, опубликованные не более N минут назад
+MAX_AGE_MINUTES = 10
 # Пауза между отправкой объявлений (чтобы не спамить и не грузить прокси)
 SEND_INTERVAL_SEC = 3
 # Пауза между парсингом разных марок (снижает риск блокировки прокси)
@@ -129,8 +152,7 @@ def _send_telegram_photo(token: str, chat_id: int, photo_url: str, caption: str)
 
 def _search_tasks_for_user(user):
     """
-    Список (brand, model_or_None) для поиска: по каждой выбранной модели с slug,
-    либо по марке целиком, если у марки есть slug и город.
+    Список (brand, model_or_None) для поиска: по выбранным маркам, без выбора моделей (всегда model=None).
     """
     tasks = []
     brands = list(user.selected_brands.all())
@@ -140,7 +162,9 @@ def _search_tasks_for_user(user):
         models_by_brand.setdefault(m.brand_id, []).append(m)
 
     for brand in brands:
-        if not (getattr(brand, "slug", None) or "").strip():
+        has_slug = (getattr(brand, "slug", None) or "").strip()
+        has_url = (getattr(brand, "avito_url", None) or "").strip()
+        if not has_slug and not has_url:
             continue
         models = models_by_brand.get(brand.id) or []
         if models:
@@ -174,6 +198,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             continue
         label = f"{brand.name} {model.name}" if model else brand.name
         logging.info("Парсинг Avito: %s → %s", label, url)
+        print(f"[Avito] Поиск: {label}\n[Avito] Ссылка: {url}", flush=True)
         await context.bot.send_message(chat_id=chat_id, text=f"Ищу {label}…")
         try:
             ads = await asyncio.to_thread(
@@ -186,14 +211,18 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 proxy_change_url=proxy_change_url,
             )
         except Exception:
-            logging.exception("Парсинг Avito (по запросу пользователя): %s", label)
+            logging.exception("Парсинг Avito (по запросу пользователя): %s. URL: %s", label, url)
             await context.bot.send_message(chat_id=chat_id, text=PROXY_ERROR_MSG)
             continue
 
         if not ads:
+            print(f"[Avito] По {label} ничего не найдено. Ссылка: {url}", flush=True)
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"По {label} объявлений за последний час не найдено. Проверьте slug и порог цены ({max_price or '—'} ₽).",
+                text=(
+                    f"По {label} новых объявлений за последние {MAX_AGE_MINUTES} мин не найдено. "
+                    f"Порог цены: {max_price or '—'} ₽.\n\nСсылка поиска:\n{url}"
+                ),
             )
             continue
 
@@ -203,9 +232,14 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 lambda: list(SeenAd.objects.filter(user=user, avito_id__in=ad_ids).values_list("avito_id", flat=True))
             )()
         )
-        fresh = [a for a in ads if a.avito_id not in seen_ids][:LIMIT_PER_BRAND]
+        fresh = [a for a in ads if a.avito_id not in seen_ids]
+        if LIMIT_PER_BRAND is not None:
+            fresh = fresh[:LIMIT_PER_BRAND]
         if not fresh:
-            await context.bot.send_message(chat_id=chat_id, text=f"По {label} новых объявлений за последний час пока нет.")
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"По {label} новых объявлений за последние {MAX_AGE_MINUTES} мин пока нет.\n\nСсылка: {url}",
+            )
             continue
 
         def _mark_seen():
@@ -235,7 +269,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
 
 def run_periodic_ads() -> None:
-    """Каждые 15 минут: парсинг по URL вида город/avtomobili/марка/модель, рассылка только свежих."""
+    """Каждые 5 минут: парсинг по URL, рассылка только объявлений за последние 10 минут."""
     try:
         token = get_bot_token()
     except Exception:
@@ -283,7 +317,8 @@ def run_periodic_ads() -> None:
             fresh = [a for a in ads if a.avito_id not in seen_ids]
             if max_price is not None:
                 fresh = [a for a in fresh if a.price is None or a.price <= max_price]
-            fresh = fresh[:LIMIT_PER_BRAND]
+            if LIMIT_PER_BRAND is not None:
+                fresh = fresh[:LIMIT_PER_BRAND]
             if not fresh:
                 continue
             SeenAd.objects.bulk_create(

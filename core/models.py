@@ -19,10 +19,16 @@ class City(models.Model):
 class Brand(models.Model):
     name = models.CharField("Название", max_length=100, unique=True)
     slug = models.SlugField(
-        "Slug для Avito (латиница, напр. bmw)",
+        "Slug для Avito (латиница, напр. bmw, audi)",
         max_length=80,
         blank=True,
-        help_text="Подставляется в URL: avito.ru/{город}/{slug}/…",
+        help_text="Подставляется в URL: avito.ru/{город}/avtomobili/{slug}/…",
+    )
+    avito_suffix = models.CharField(
+        "Суффикс Avito для моделей (если у марки свой)",
+        max_length=80,
+        blank=True,
+        help_text="Напр. ASgBAgICAkTgtg3elyjitg3inSg для Audi; пусто — общий суффикс",
     )
     avito_url = models.URLField("Ссылка поиска Avito (полная)", blank=True, null=True)
     avito_path = models.CharField(

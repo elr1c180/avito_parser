@@ -60,5 +60,5 @@ class HttpClient:
                 last_exc = e
                 logger.warning("Avito request attempt %s/%s failed: %s", attempt, self.max_retries, e)
                 time.sleep(self.retry_delay)
-        logger.error("Avito request failed after %s retries: %s", self.max_retries, last_exc)
-        raise RuntimeError("HTTP request failed after retries") from last_exc
+        logger.error("Avito request failed after %s retries. URL: %s. Error: %s", self.max_retries, url, last_exc)
+        raise RuntimeError(f"HTTP request failed after retries. URL: {url}") from last_exc

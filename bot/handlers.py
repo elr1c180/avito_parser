@@ -8,9 +8,9 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.error import BadRequest, TimedOut as TelegramTimedOut
 
-from core.models import Brand, CarModel, City, TelegramUser
+from core.models import Brand, City, TelegramUser
 
-from .keyboards import get_brands_keyboard, get_cities_keyboard, get_models_keyboard
+from .keyboards import get_brands_keyboard, get_cities_keyboard
 from .services import send_ads_for_user
 from .state import PENDING_PASSWORD, USER_STATE
 
@@ -158,66 +158,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
         selected_ids = state.get("selected", set())
 
-        def _save_brands():
+        def _save_brands_and_clear_models():
             user.selected_brands.set(Brand.objects.filter(id__in=list(selected_ids)))
+            user.selected_models.clear()
 
-        await sync_to_async(_save_brands)()
-        brand_ids = list(selected_ids)
-        USER_STATE[chat_id] = {"state": "models", "selected": set(), "brand_ids": brand_ids, "page": 0}
-        keyboard = await sync_to_async(get_models_keyboard)(brand_ids, set(), 0)
-        await query.edit_message_text(
-            "Выберите модели (или «Готово» — тогда все модели выбранных марок):",
-            reply_markup=keyboard,
-        )
-        return
-
-    if data.startswith("model_page_"):
-        page = int(data.split("_")[2])
-        state = USER_STATE.get(chat_id, {})
-        if state.get("state") != "models":
-            return
-        brand_ids = state.get("brand_ids", [])
-        selected = state.get("selected", set())
-        state["page"] = page
-        keyboard = await sync_to_async(get_models_keyboard)(brand_ids, selected, page)
-        await query.edit_message_reply_markup(reply_markup=keyboard)
-        return
-
-    if data.startswith("model_"):
-        try:
-            model_id = int(data.split("_")[1])
-        except (IndexError, ValueError):
-            return
-        state = USER_STATE.get(chat_id, {})
-        if state.get("state") != "models":
-            return
-        selected = state.get("selected", set())
-        if model_id in selected:
-            selected.discard(model_id)
-        else:
-            selected.add(model_id)
-        state["selected"] = selected
-        brand_ids = state.get("brand_ids", [])
-        page = state.get("page", 0)
-        keyboard = await sync_to_async(get_models_keyboard)(brand_ids, selected, page)
-        await query.edit_message_reply_markup(reply_markup=keyboard)
-        return
-
-    if data == "models_done":
-        state = USER_STATE.get(chat_id, {})
-        if state.get("state") != "models":
-            return
-        user = await sync_to_async(get_user_by_chat_or_username)(
-            chat_id, update.effective_user.username if update.effective_user else None
-        )
-        if not user:
-            return
-        selected_ids = state.get("selected", set())
-
-        def _save_models():
-            user.selected_models.set(CarModel.objects.filter(id__in=list(selected_ids)))
-
-        await sync_to_async(_save_models)()
+        await sync_to_async(_save_brands_and_clear_models)()
         del USER_STATE[chat_id]
         await query.edit_message_text("Введите максимальный порог цены (руб):")
         USER_STATE[chat_id] = {"state": "price", "user": user}

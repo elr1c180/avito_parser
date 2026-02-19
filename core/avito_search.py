@@ -30,6 +30,19 @@ class AvitoAd:
     published_at: Optional[datetime]  # UTC
 
 
+def _log_avito_response_debug(html: str, state: dict, url: str) -> None:
+    """При пустом каталоге выводит в лог, что именно пришло от Авито (для отладки)."""
+    logger.warning(
+        "[Avito DEBUG] Каталог не найден. URL: %s | Длина HTML: %s | state пустой: %s | Ключи state: %s",
+        url,
+        len(html),
+        not state,
+        list(state.keys()) if isinstance(state, dict) else type(state).__name__,
+    )
+    # Показать начало HTML (часто видно: это выдача или капча/блок)
+    sample = (html[:800] + "..." if len(html) > 800 else html).replace("\n", " ")
+    logger.warning("[Avito DEBUG] Начало ответа (первые ~800 символов): %s", sample)
+
 def _parse_published_at(sort_time_stamp: Optional[int]) -> Optional[datetime]:
     """Преобразует sortTimeStamp (секунды или миллисекунды) в datetime UTC."""
     if sort_time_stamp is None:
@@ -77,6 +90,8 @@ def search_ads(
             or {}
         )
         if not catalog:
+            # Показать, что пришло от парсера при пустом каталоге
+            _log_avito_response_debug(response.text, state, next_url)
             break
 
         try:
