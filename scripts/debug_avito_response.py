@@ -72,6 +72,20 @@ def main():
         print("Статус:", response.status_code, "Длина HTML:", len(response.text))
         html = response.text
 
+    # Диагностика: что в HTML
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    scripts = soup.select("script")
+    print("\n--- Теги script в HTML ---")
+    for i, s in enumerate(scripts):
+        t = s.get("type") or "(no type)"
+        src = s.get("src", "")[:50] if s.get("src") else ""
+        text_len = len(s.text or "")
+        print(f"  [{i}] type={t!r} src={src!r} text_len={text_len}")
+    print("  Есть type='mime/invalid'?", any(s.get("type") == "mime/invalid" for s in scripts))
+    print("  В сыром HTML есть 'mime/invalid'?", "mime/invalid" in html)
+    print("  В сыром HTML есть '\"catalog\"'?", '"catalog"' in html or "'catalog'" in html)
+
     state = extract_state_json(html)
     print("\n--- Ключи state (верхний уровень) ---")
     print(list(state.keys()))
