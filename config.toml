@@ -13,7 +13,7 @@ seller_black_list = []
 max_price = 99999999
 min_price = 0
 geo = ""
-proxy_string = "aF4yF7:NypBUNAFEc9T@mproxy.site:11987"
+proxy_string = "aF4yF7:NypBUNAFEc9T@mproxy.site:17872"
 proxy_change_url = "https://changeip.mobileproxy.space/?proxy_key=076bdefc7c312372bb32e6de859ff0ea"
 pause_general = 1
 pause_between_links = 1
