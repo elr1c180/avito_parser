@@ -17,7 +17,43 @@ from telegram.ext import ContextTypes
 
 from app_config import get_bot_token, get_proxy_config
 from core.avito_search import AvitoAd, search_ads
-from core.models import Brand, SeenAd, TelegramUser
+from core.models import Brand, CarModel, SeenAd, TelegramUser
+
+# Формат Avito: регион (slug) + avtomobili + марка (slug) + модель (slug)
+# Пример: .../moskva/avtomobili/mercedes-benz/a-klass-ASgBAgICAkTgtg3omCjitg2enyg?localPriority=0&...
+AVITO_BASE = "https://www.avito.ru"
+AVITO_CARS_SEGMENT = "avtomobili"
+# Суффикс после slug модели (категория авто на Авито; у разных марок может отличаться — при необходимости задать в CarModel.avito_suffix)
+AVITO_CAR_MODEL_SUFFIX = "ASgBAgICAkTgtg3omCjitg2enyg"
+AVITO_QUERY = "localPriority=0&radius=0&searchRadius=0"
+
+
+def _build_search_url(user, brand, model=None) -> Optional[str]:
+    """
+    Собрать URL поиска: avito.ru/{город_slug}/avtomobili/{марка_slug}/{модель_slug}-SUFFIX.
+    Все slug — латиница (moskva, bmw, m4). Если модель не задана — только марка.
+    """
+    if not user.city or not getattr(brand, "slug", None) or not (brand.slug or "").strip():
+        return brand.avito_url if getattr(brand, "avito_url", None) else None
+    city_slug = (user.city.slug or "").strip().strip("/")
+    brand_slug = (brand.slug or "").strip().strip("/")
+    if not city_slug or not brand_slug:
+        return brand.avito_url if getattr(brand, "avito_url", None) else None
+    if model and getattr(model, "slug", None) and (model.slug or "").strip():
+        model_slug = (model.slug or "").strip().strip("/")
+        suffix = getattr(model, "avito_suffix", None) and (model.avito_suffix or "").strip() or AVITO_CAR_MODEL_SUFFIX
+        path = f"{city_slug}/{AVITO_CARS_SEGMENT}/{brand_slug}/{model_slug}-{suffix}"
+    else:
+        path = f"{city_slug}/{AVITO_CARS_SEGMENT}/{brand_slug}"
+    return f"{AVITO_BASE}/{path}?{AVITO_QUERY}"
+
+
+def _user_models_by_brand(user):
+    """Возвращает dict: brand_id -> [названия выбранных моделей этой марки]."""
+    result = {}
+    for m in user.selected_models.select_related("brand").all():
+        result.setdefault(m.brand_id, []).append(m.name)
+    return result
 
 PROXY_ERROR_MSG = "Требуется замена прокси. Проверьте config.toml (секция [avito])."
 LIMIT_PER_BRAND = 20
@@ -91,32 +127,57 @@ def _send_telegram_photo(token: str, chat_id: int, photo_url: str, caption: str)
         return False
 
 
+def _search_tasks_for_user(user):
+    """
+    Список (brand, model_or_None) для поиска: по каждой выбранной модели с slug,
+    либо по марке целиком, если у марки есть slug и город.
+    """
+    tasks = []
+    brands = list(user.selected_brands.all())
+    selected_models = list(user.selected_models.select_related("brand").filter(slug__isnull=False).exclude(slug=""))
+    models_by_brand = {}
+    for m in selected_models:
+        models_by_brand.setdefault(m.brand_id, []).append(m)
+
+    for brand in brands:
+        if not (getattr(brand, "slug", None) or "").strip():
+            continue
+        models = models_by_brand.get(brand.id) or []
+        if models:
+            for m in models:
+                if (m.slug or "").strip():
+                    tasks.append((brand, m))
+        else:
+            tasks.append((brand, None))
+    return tasks
+
+
 async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
     chat_id = update.effective_chat.id
     user = await sync_to_async(
-        lambda: TelegramUser.objects.prefetch_related("selected_brands").get(id=user_id)
+        lambda: TelegramUser.objects.prefetch_related("selected_brands", "selected_models").select_related("city").get(id=user_id)
     )()
-    brands = list(user.selected_brands.all())
-    if not brands:
-        await context.bot.send_message(chat_id=chat_id, text="Марки не выбраны. Нажмите /start или /brands.")
+    tasks = await sync_to_async(_search_tasks_for_user)(user)
+    if not tasks:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Нет ни одной пары марка+модель с заполненным slug для вашего города. Выберите город, марки и модели; в админке у марок и моделей должны быть slug (латиница).",
+        )
         return
 
     max_price = user.max_price
     proxy_string, proxy_change_url = get_proxy_config()
 
-    for brand in brands:
-        if not brand.avito_url:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"Для марки «{brand.name}» не задана ссылка поиска в админке. Пропускаю.",
-            )
+    for brand, model in tasks:
+        url = _build_search_url(user, brand, model)
+        if not url:
             continue
-
-        await context.bot.send_message(chat_id=chat_id, text=f"Ищу {brand.name}…")
+        label = f"{brand.name} {model.name}" if model else brand.name
+        await context.bot.send_message(chat_id=chat_id, text=f"Ищу {label}…")
         try:
             ads = await asyncio.to_thread(
                 search_ads,
-                url=brand.avito_url,
+                url=url,
                 max_price=max_price,
                 pages=1,
                 max_age_minutes=MAX_AGE_MINUTES,
@@ -124,14 +185,14 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 proxy_change_url=proxy_change_url,
             )
         except Exception:
-            logging.exception("Парсинг Avito (по запросу пользователя): %s", brand.name)
+            logging.exception("Парсинг Avito (по запросу пользователя): %s", label)
             await context.bot.send_message(chat_id=chat_id, text=PROXY_ERROR_MSG)
             continue
 
         if not ads:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"По {brand.name} объявлений за последний час не найдено. Проверьте ссылку и порог цены ({max_price or '—'} ₽).",
+                text=f"По {label} объявлений за последний час не найдено. Проверьте slug и порог цены ({max_price or '—'} ₽).",
             )
             continue
 
@@ -143,7 +204,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         )
         fresh = [a for a in ads if a.avito_id not in seen_ids][:LIMIT_PER_BRAND]
         if not fresh:
-            await context.bot.send_message(chat_id=chat_id, text=f"По {brand.name} новых объявлений за последний час пока нет.")
+            await context.bot.send_message(chat_id=chat_id, text=f"По {label} новых объявлений за последний час пока нет.")
             continue
 
         def _mark_seen():
@@ -173,24 +234,35 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
 
 def run_periodic_ads() -> None:
-    """Каждые 15 минут: парсинг по маркам, рассылка только свежих. При ошибке — тихо пропуск."""
+    """Каждые 15 минут: парсинг по URL вида город/avtomobili/марка/модель, рассылка только свежих."""
     try:
         token = get_bot_token()
     except Exception:
         logging.exception("Не удалось получить токен бота для рассылки")
         return
     proxy_string, proxy_change_url = get_proxy_config()
-    brands = list(Brand.objects.filter(avito_url__isnull=False).exclude(avito_url=""))
-    if not brands:
+    users = list(
+        TelegramUser.objects.filter(selected_brands__isnull=False)
+        .exclude(chat_id__isnull=True)
+        .exclude(city__isnull=True)
+        .select_related("city")
+        .prefetch_related("selected_brands", "selected_models")
+        .distinct()
+    )
+    if not users:
         return
 
-    for brand in brands:
-        users = list(TelegramUser.objects.filter(selected_brands=brand).exclude(chat_id__isnull=True))
-        if not users:
-            continue
+    url_to_tasks = {}
+    for user in users:
+        for brand, model in _search_tasks_for_user(user):
+            url = _build_search_url(user, brand, model)
+            if url:
+                url_to_tasks.setdefault(url, []).append((user, brand, model))
+
+    for url, task_list in url_to_tasks.items():
         try:
             ads = search_ads(
-                url=brand.avito_url,
+                url=url,
                 max_price=None,
                 pages=1,
                 max_age_minutes=MAX_AGE_MINUTES,
@@ -198,12 +270,12 @@ def run_periodic_ads() -> None:
                 proxy_change_url=proxy_change_url,
             )
         except Exception:
-            logging.exception("Парсинг Avito (по расписанию), марка: %s", brand.name)
+            logging.exception("Парсинг Avito (по расписанию), url: %s", url[:80])
             continue
         if not ads:
             continue
 
-        for user in users:
+        for user, brand, model in task_list:
             max_price = user.max_price
             ad_ids = [a.avito_id for a in ads]
             seen_ids = set(SeenAd.objects.filter(user=user, avito_id__in=ad_ids).values_list("avito_id", flat=True))

@@ -2,7 +2,7 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters
 
 from app_config import get_bot_token, get_telegram_proxy
-from .handlers import start, command_brands, handle_callback, handle_message
+from .handlers import start, command_brands, command_city, handle_callback, handle_message
 from .services import run_periodic_ads
 
 
@@ -23,6 +23,7 @@ def main() -> None:
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("brands", command_brands))
+    app.add_handler(CommandHandler("city", command_city))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
