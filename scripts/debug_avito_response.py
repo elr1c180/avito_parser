@@ -46,7 +46,16 @@ def main():
         proxy_string, proxy_change_url = None, None
     proxy = build_proxy(AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or ""))
     print("Прокси из config.toml:", "да" if (proxy_string or proxy_change_url) else "нет")
-    client = HttpClient(proxy=proxy, timeout=30, max_retries=2, retry_delay=2)
+    # Мобильный прокси: сменить IP перед запросом (часто с сервера старый IP уже в бане)
+    if proxy_change_url:
+        try:
+            import requests
+            print("Смена IP мобильного прокси…", end=" ", flush=True)
+            requests.get(proxy_change_url, timeout=15)
+            print("ок")
+        except Exception as e:
+            print("ошибка:", e)
+    client = HttpClient(proxy=proxy, timeout=30, max_retries=3, retry_delay=5)
     response = client.request("GET", URL)
     print("Статус:", response.status_code, "Длина HTML:", len(response.text))
 

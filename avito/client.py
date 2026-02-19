@@ -26,7 +26,7 @@ class HttpClient:
         timeout: int = 20,
         max_retries: int = 5,
         retry_delay: int = 5,
-        block_threshold: int = 3,
+        block_threshold: int = 1,
     ) -> None:
         self.proxy = proxy
         self.timeout = timeout
@@ -54,6 +54,7 @@ class HttpClient:
                     last_status = response.status_code
                     self._block_attempts += 1
                     if self._block_attempts >= self.block_threshold:
+                        logger.warning("Avito ответ %s — смена IP прокси (попытка %s/%s)", last_status, attempt, self.max_retries)
                         self.proxy.handle_block()
                         self._block_attempts = 0
                     logger.warning(
