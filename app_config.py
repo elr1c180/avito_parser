@@ -54,6 +54,16 @@ def get_proxy_config() -> Tuple[Optional[str], Optional[str]]:
     return ps, pu
 
 
+def get_use_playwright() -> bool:
+    """Использовать Playwright (браузер) для запросов к Avito — обход 403 на сервере."""
+    data = _load()
+    avito = data.get("avito", {})
+    val = avito.get("use_playwright")
+    if val is None:
+        val = avito.get("use_webdriver")
+    return str(val).lower() in ("1", "true", "yes")
+
+
 def get_django_settings() -> Dict[str, Any]:
     """Настройки для Django (secret_key, debug, allowed_hosts)."""
     data = _load()

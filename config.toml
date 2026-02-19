@@ -26,6 +26,8 @@ one_file_for_link = false
 parse_views = false
 save_xlsx = true
 use_webdriver = false
+# На сервере при 403 включите: запросы через браузер (Playwright), как в parser_avito
+use_playwright = false
 cookies_api_key = ""
 # Пароль входа в TG-бота и админку (задайте свой)
 bot_password = ""

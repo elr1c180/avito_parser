@@ -10,3 +10,4 @@ requests>=2.32.3
 apscheduler>=3.10.0
 tomli>=2.0.0
 transliterate>=1.10.2
+playwright>=1.49.0

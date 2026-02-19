@@ -14,6 +14,7 @@ token = "ТОКЕН_ОТ_BOTFATHER"
 [avito]
 proxy_string = "login:password@host:port"
 proxy_change_url = "https://..."   # для мобильного прокси (смена IP)
+# use_playwright = true   # на сервере при 403: запросы через браузер (как в parser_avito)
 
 [django]
 secret_key = "случайная-строка"
@@ -28,6 +29,15 @@ allowed_hosts = ["*"]
 ```bash
 pip install -r requirements.txt
 ```
+
+Если на сервере Avito отдаёт 403 даже с прокси, включите режим **Playwright** (реальный браузер, как в [parser_avito](https://github.com/Duff89/parser_avito)):
+
+1. В `config.toml` в секции `[avito]` задайте `use_playwright = true`.
+2. Установите браузер для Playwright:  
+   `python -m playwright install chromium`
+3. На Linux-сервере могут понадобиться зависимости:  
+   `apt install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2`  
+   (или используйте образ с Playwright, как в parser_avito).
 
 ## Админка Django
 

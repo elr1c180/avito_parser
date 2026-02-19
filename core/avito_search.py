@@ -56,6 +56,26 @@ def _parse_published_at(sort_time_stamp: Optional[int]) -> Optional[datetime]:
         return None
 
 
+def _fetch_page_html(
+    next_url: str,
+    use_playwright: bool,
+    proxy_string: Optional[str],
+    proxy_change_url: Optional[str],
+    timeout: int,
+    max_retries: int,
+    retry_delay: int,
+) -> str:
+    """Возвращает HTML страницы: через Playwright или через HttpClient."""
+    if use_playwright:
+        from avito.playwright_fetch import fetch_html
+        logger.info("Парсинг Avito (Playwright), URL: %s", next_url[:80])
+        return fetch_html(url=next_url, proxy_string=proxy_string or None, timeout=timeout * 1000)
+    proxy = build_proxy(AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or ""))
+    client = HttpClient(proxy=proxy, timeout=timeout, max_retries=max_retries, retry_delay=retry_delay)
+    response = client.request("GET", next_url)
+    return response.text
+
+
 def search_ads(
     *,
     url: str,
@@ -67,14 +87,14 @@ def search_ads(
     retry_delay: int = 5,
     proxy_string: Optional[str] = None,
     proxy_change_url: Optional[str] = None,
+    use_playwright: bool = False,
 ) -> List[AvitoAd]:
     """
     Поиск объявлений по ссылке Avito. При ошибке (блокировка, сеть) пробрасывает исключение.
     max_age_minutes: только объявления, опубликованные не более N минут назад (None — без фильтра).
+    use_playwright: True — загрузка через браузер (обход 403 на сервере), как в parser_avito.
     """
     logger.info("Парсинг Avito, URL: %s", url)
-    proxy = build_proxy(AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or ""))
-    client = HttpClient(proxy=proxy, timeout=timeout, max_retries=max_retries, retry_delay=retry_delay)
     results: List[AvitoAd] = []
     next_url = url
     now_utc = datetime.now(timezone.utc)
@@ -82,8 +102,10 @@ def search_ads(
     for page_num in range(max(1, pages)):
         if page_num > 0:
             logger.info("Парсинг Avito, страница %s, URL: %s", page_num + 1, next_url)
-        response = client.request("GET", next_url)
-        state = extract_state_json(response.text)
+        html = _fetch_page_html(
+            next_url, use_playwright, proxy_string, proxy_change_url, timeout, max_retries, retry_delay
+        )
+        state = extract_state_json(html)
         catalog = (
             state.get("data", {}).get("catalog")
             or state.get("listing", {}).get("data", {}).get("catalog")
@@ -91,7 +113,7 @@ def search_ads(
         )
         if not catalog:
             # Показать, что пришло от парсера при пустом каталоге
-            _log_avito_response_debug(response.text, state, next_url)
+            _log_avito_response_debug(html, state, next_url)
             break
 
         try:
