@@ -75,7 +75,7 @@ def _fetch_page_html(
     proxy = build_proxy(AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or ""))
     client = HttpClient(
         proxy=proxy,
-        timeout=timeout,
+        timeout=20,
         max_retries=max_retries,
         retry_delay=retry_delay,
         block_threshold=block_threshold,
