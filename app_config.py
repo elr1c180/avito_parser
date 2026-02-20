@@ -77,15 +77,15 @@ def get_avito_timeout() -> int:
 
 
 def get_block_threshold() -> int:
-    """После скольких блокировок подряд менять IP (1 = сразу, 2–3 = реже ротация, как в parser_avito)."""
+    """После скольких блокировок подряд менять IP (1 = сразу, 3 = как в parser_avito)."""
     data = _load()
     val = data.get("avito", {}).get("block_threshold")
     if val is None:
-        return 2
+        return 3
     try:
         return max(1, min(5, int(val)))
     except (TypeError, ValueError):
-        return 2
+        return 3
 
 
 def get_pause_between_requests() -> float:

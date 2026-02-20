@@ -65,9 +65,9 @@ def _fetch_page_html(
     timeout: int,
     max_retries: int,
     retry_delay: int,
-    block_threshold: int = 2,
+    block_threshold: int = 3,
 ) -> str:
-    """Возвращает HTML страницы: через Playwright или через HttpClient."""
+    """Возвращает HTML страницы: через Playwright или через HttpClient (логика как в parser_avito)."""
     if use_playwright:
         from avito.playwright_fetch import fetch_html
         logger.info("Парсинг Avito (Playwright), URL: %s", next_url[:80])
@@ -93,7 +93,7 @@ def search_ads(
     timeout: int = 120,
     max_retries: int = 5,
     retry_delay: int = 5,
-    block_threshold: int = 2,
+    block_threshold: int = 3,
     proxy_string: Optional[str] = None,
     proxy_change_url: Optional[str] = None,
     use_playwright: bool = False,

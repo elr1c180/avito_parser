@@ -1,3 +1,8 @@
+"""
+Клиент для запросов к Avito — логика как в parser_avito (parser/http/client.py).
+Только 401, 403, 429 → счётчик блоков → при block_threshold смена IP и повтор.
+Без cookies, без проверки тела 200.
+"""
 import logging
 import time
 from typing import Optional
@@ -8,22 +13,12 @@ logger = logging.getLogger(__name__)
 
 from .proxy import Proxy
 
-# Как в parser_avito: актуальный Chrome-вид, меньше шанс детекта
+# Как в parser_avito: только эти заголовки
 HEADERS = {
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-    "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Cache-Control": "no-cache",
-    "Pragma": "no-cache",
-    "Referer": "https://www.avito.ru/",
-    "sec-ch-ua": '"Chromium";v="140", "Not=A?Brand";v="24", "Google Chrome";v="140"',
-    "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"Windows"',
-    "sec-fetch-dest": "document",
-    "sec-fetch-mode": "navigate",
-    "sec-fetch-site": "none",
-    "sec-fetch-user": "?1",
-    "Upgrade-Insecure-Requests": "1",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36",
+    "sec-ch-ua": '"Not(A:Brand";v="8", "Chromium";v="144", "Google Chrome";v="144"',
+    "sec-ch-ua-mobile": "?0",
 }
 
 
@@ -34,7 +29,7 @@ class HttpClient:
         timeout: int = 20,
         max_retries: int = 5,
         retry_delay: int = 5,
-        block_threshold: int = 2,
+        block_threshold: int = 3,
     ) -> None:
         self.proxy = proxy
         self.timeout = timeout
@@ -53,47 +48,32 @@ class HttpClient:
 
     def request(self, method: str, url: str, **kwargs: object) -> httpx.Response:
         last_exc = None
-        last_status = None
         for attempt in range(1, self.max_retries + 1):
             try:
                 with self._build_client() as client:
                     response = client.request(method, url, **kwargs)
-                if response.status_code in (401, 403, 429, 502, 503, 504):
-                    last_status = response.status_code
+
+                if response.status_code in (401, 403, 429):
                     self._block_attempts += 1
+                    logger.warning(
+                        "Blocked request (%s), attempt %s",
+                        response.status_code,
+                        self._block_attempts,
+                    )
                     if self._block_attempts >= self.block_threshold:
-                        logger.warning("Avito ответ %s — смена IP прокси (попытка %s/%s)", last_status, attempt, self.max_retries)
+                        logger.warning("Block threshold reached, handling block")
                         self.proxy.handle_block()
                         self._block_attempts = 0
-                    logger.warning(
-                        "Avito attempt %s/%s: ответ %s. URL: %s",
-                        attempt, self.max_retries, last_status, url[:80],
-                    )
                     time.sleep(self.retry_delay)
                     continue
-                # Страница «Доступ ограничен: проблема с IP» приходит с 200
-                if response.status_code == 200:
-                    text = (response.text or "")
-                    if "проблема с IP" in text or "Доступ ограничен" in text:
-                        last_status = 403
-                        self._block_attempts += 1
-                        if self._block_attempts >= self.block_threshold:
-                            logger.warning("Avito: блокировка по IP (страница «Доступ ограничен») — смена IP (попытка %s/%s)", attempt, self.max_retries)
-                            self.proxy.handle_block()
-                            self._block_attempts = 0
-                        logger.warning("Avito attempt %s/%s: страница блокировки по IP. URL: %s", attempt, self.max_retries, url[:80])
-                        time.sleep(self.retry_delay)
-                        continue
+
                 response.raise_for_status()
                 self._block_attempts = 0
                 return response
+
             except httpx.RequestError as e:
                 last_exc = e
-                logger.warning("Avito request attempt %s/%s failed: %s", attempt, self.max_retries, e)
+                logger.warning("Request error (attempt %s): %s", attempt, e)
                 time.sleep(self.retry_delay)
-        if last_status is not None:
-            msg = f"Avito возвращает {last_status} после {self.max_retries} попыток (блокировка/капча/лимит). URL: {url}"
-        else:
-            msg = f"HTTP request failed after {self.max_retries} retries. URL: {url}"
-        logger.error("Avito request failed. %s. Last error: %s", msg, last_exc)
-        raise RuntimeError(msg) from last_exc
+
+        raise RuntimeError("HTTP request failed after retries") from last_exc

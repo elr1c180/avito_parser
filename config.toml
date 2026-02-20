@@ -30,8 +30,8 @@ use_webdriver = true
 use_playwright = false
 # Таймаут запроса к Avito (секунды). При Playwright на сервере ставьте 120–180
 timeout = 240
-# После скольких блокировок подряд менять IP (1 = сразу, 2–3 = реже, как в parser_avito)
-block_threshold = 2
+# После скольких блокировок подряд менять IP (1 = сразу, 3 = как в parser_avito)
+block_threshold = 3
 # Пауза между запросами к Avito в сек (дробная). При Playwright полезно 3–5
 pause_between_requests = 4
 cookies_api_key = ""

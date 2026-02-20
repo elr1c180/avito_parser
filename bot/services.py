@@ -366,20 +366,26 @@ def run_periodic_ads() -> None:
     for idx, (url, task_list) in enumerate(url_to_tasks.items()):
         if idx > 0 and pause_between > 0:
             time.sleep(pause_between)
-        try:
-            ads = search_ads(
-                url=url,
-                max_price=None,
-                pages=1,
-                max_age_minutes=MAX_AGE_MINUTES,
-                timeout=timeout,
-                block_threshold=block_threshold,
-                proxy_string=proxy_string,
-                proxy_change_url=proxy_change_url,
-                use_playwright=use_playwright,
-            )
-        except Exception:
-            logging.exception("Парсинг Avito (по расписанию), url: %s", url[:80])
+        ads = None
+        for attempt in range(2):  # как в parser_avito: при ошибке одна повторная попытка
+            try:
+                ads = search_ads(
+                    url=url,
+                    max_price=None,
+                    pages=1,
+                    max_age_minutes=MAX_AGE_MINUTES,
+                    timeout=timeout,
+                    block_threshold=block_threshold,
+                    proxy_string=proxy_string,
+                    proxy_change_url=proxy_change_url,
+                    use_playwright=use_playwright,
+                )
+                break
+            except Exception:
+                logging.exception("Парсинг Avito (по расписанию), url: %s, попытка %s/2", url[:80], attempt + 1)
+                if attempt == 0:
+                    time.sleep(15)  # пауза перед повтором, как пауза между ссылками в parser_avito
+        if ads is None:
             continue
         if not ads:
             continue
