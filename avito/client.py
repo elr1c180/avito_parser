@@ -64,6 +64,7 @@ class HttpClient:
                         logger.warning("Block threshold reached, handling block")
                         self.proxy.handle_block()
                         self._block_attempts = 0
+                        time.sleep(10)  # даём прокси время переключить IP перед следующим запросом
                     time.sleep(self.retry_delay)
                     continue
 

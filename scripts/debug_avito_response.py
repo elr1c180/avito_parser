@@ -50,7 +50,7 @@ def _fetch_html_http(url: str) -> str:
             requests.get(proxy_change_url, timeout=30)
         except Exception as e:
             print(f"Смена IP: {e}", file=sys.stderr)
-    client = HttpClient(proxy=proxy, timeout=30, max_retries=5, retry_delay=5, block_threshold=3)
+    client = HttpClient(proxy=proxy, timeout=30, max_retries=10, retry_delay=5, block_threshold=3)
     response = client.request("GET", url)
     return response.text
 
