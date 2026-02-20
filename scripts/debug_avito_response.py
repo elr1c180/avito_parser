@@ -2,33 +2,25 @@
 """
 Скрипт отладки: по ссылке Avito забирает страницу и выводит в консоль все объявления.
 
-HTTP-режим использует код оригинального parser_avito (прокси + клиент + запрос) один в один.
-Режим Playwright — наш (браузер).
+Код HTTP-клиента, прокси и заголовков теперь 1-в-1 как в parser_avito.
 
   python scripts/debug_avito_response.py [URL]
   python scripts/debug_avito_response.py --http [URL]
   python scripts/debug_avito_response.py --playwright [URL]
 """
-import html as html_module
-import json
 import sys
 from pathlib import Path
 
-# корень проекта и parser_avito в path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-PARSER_AVITO = ROOT / "parser_avito"
-sys.path.insert(0, str(PARSER_AVITO))
 
 from app_config import get_proxy_config
-
-# Оригинальные parser_avito: прокси и клиент (как в parser_cls.py)
-from dto import AvitoConfig
-from parser.http.client import HttpClient
-from parser.proxies.proxy_factory import build_proxy
-from models import ItemsResponse
+from avito.client import HttpClient
+from avito.dto import AvitoConfig
+from avito.extract import extract_state_json
+from avito.models import ItemsResponse
+from avito.proxy_factory import build_proxy
 from pydantic import ValidationError
-from bs4 import BeautifulSoup
 
 
 DEFAULT_URL = "https://www.avito.ru/moskva/gruzoviki_i_spetstehnika/gruzoviki/toyota-ASgBAgICAkRUkAKOwA2aiTc?cd=1&radius=200&searchRadius=200"
@@ -42,41 +34,11 @@ def _parse_args():
     return url, use_playwright
 
 
-def find_json_on_page(html_code: str, data_type: str = "mime") -> dict:
-    """Как в parser_avito parser_cls.py — извлечение state из script type=mime/invalid."""
-    soup = BeautifulSoup(html_code, "html.parser")
-    try:
-        for _script in soup.select("script"):
-            script_type = _script.get("type")
-            if data_type == "mime" and script_type == "mime/invalid":
-                script_content = html_module.unescape(_script.text)
-                parsed_data = json.loads(script_content)
-                if "state" in parsed_data:
-                    return parsed_data["state"]
-                if "data" in parsed_data:
-                    return parsed_data["data"]
-                return parsed_data
-    except Exception:
-        pass
-    return {}
-
-
-def _fetch_http_parser_avito(url: str) -> str:
-    """Запрос к Avito как в parser_avito: тот же build_proxy, тот же HttpClient, без превентивной смены IP."""
+def _fetch_http(url: str) -> str:
     proxy_string, proxy_change_url = get_proxy_config()
-    config = AvitoConfig(
-        urls=[url],
-        proxy_string=proxy_string or "",
-        proxy_change_url=proxy_change_url or "",
-        max_count_of_retry=5,
-    )
+    config = AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or "")
     proxy = build_proxy(config)
-    client = HttpClient(
-        proxy=proxy,
-        cookies=None,
-        timeout=20,
-        max_retries=config.max_count_of_retry,
-    )
+    client = HttpClient(proxy=proxy, timeout=20, max_retries=5)
     response = client.request("GET", url)
     return response.text
 
@@ -104,7 +66,7 @@ def _format_price(it) -> str:
 
 def main():
     url, use_playwright = _parse_args()
-    mode = "Playwright" if use_playwright else "HTTP (parser_avito)"
+    mode = "Playwright" if use_playwright else "HTTP"
     print(f"URL: {url}")
     print(f"Режим: {mode}\n")
 
@@ -112,12 +74,12 @@ def main():
         print("Загрузка (Playwright)…", flush=True)
         html = _fetch_playwright(url)
     else:
-        print("Загрузка (HTTP, как parser_avito)…", flush=True)
-        html = _fetch_http_parser_avito(url)
+        print("Загрузка (HTTP)…", flush=True)
+        html = _fetch_http(url)
 
     print(f"HTML: {len(html)} символов\n")
 
-    state = find_json_on_page(html)
+    state = extract_state_json(html)
     catalog = state.get("data", {}).get("catalog") if isinstance(state, dict) else {}
     catalog = catalog or {}
 
