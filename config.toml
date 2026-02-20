@@ -29,7 +29,7 @@ use_webdriver = true
 # На сервере при 403 включите: запросы через браузер (Playwright), как в parser_avito
 use_playwright = true
 # Таймаут запроса к Avito (секунды). При Playwright на сервере ставьте 120–180
-timeout = 120
+timeout = 240
 # После скольких блокировок подряд менять IP (1 = сразу, 2–3 = реже, как в parser_avito)
 block_threshold = 2
 # Пауза между запросами к Avito в сек (дробная). При Playwright полезно 3–5
