@@ -30,6 +30,10 @@ use_webdriver = true
 use_playwright = true
 # Таймаут запроса к Avito (секунды). При Playwright на сервере ставьте 120–180
 timeout = 120
+# После скольких блокировок подряд менять IP (1 = сразу, 2–3 = реже, как в parser_avito)
+block_threshold = 2
+# Пауза между запросами к Avito в сек (дробная). При Playwright полезно 3–5
+pause_between_requests = 4
 cookies_api_key = ""
 # Пароль входа в TG-бота и админку (задайте свой)
 bot_password = ""

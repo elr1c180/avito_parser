@@ -16,7 +16,7 @@ from asgiref.sync import sync_to_async
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app_config import get_avito_timeout, get_bot_token, get_proxy_config, get_use_playwright
+from app_config import get_avito_timeout, get_block_threshold, get_bot_token, get_proxy_config, get_pause_between_requests, get_use_playwright
 from core.avito_search import AvitoAd, search_ads
 from core.models import Brand, CarModel, SeenAd, TelegramUser
 
@@ -222,8 +222,12 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     proxy_string, proxy_change_url = get_proxy_config()
     use_playwright = get_use_playwright()
     timeout = get_avito_timeout()
+    block_threshold = get_block_threshold()
+    pause_between = get_pause_between_requests()
 
-    for brand, model, city in tasks:
+    for i, (brand, model, city) in enumerate(tasks):
+        if i > 0 and pause_between > 0:
+            await asyncio.sleep(pause_between)
         url = _build_search_url(user, brand, model, city=city)
         if not url:
             continue
@@ -241,6 +245,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 pages=1,
                 max_age_minutes=MAX_AGE_MINUTES,
                 timeout=timeout,
+                block_threshold=block_threshold,
                 proxy_string=proxy_string,
                 proxy_change_url=proxy_change_url,
                 use_playwright=use_playwright,
@@ -313,6 +318,7 @@ def run_periodic_ads() -> None:
     proxy_string, proxy_change_url = get_proxy_config()
     use_playwright = get_use_playwright()
     timeout = get_avito_timeout()
+    block_threshold = get_block_threshold()
     users = list(
         TelegramUser.objects.filter(selected_brands__isnull=False)
         .exclude(chat_id__isnull=True)
@@ -330,7 +336,10 @@ def run_periodic_ads() -> None:
             if url:
                 url_to_tasks.setdefault(url, []).append((user, brand, model))
 
-    for url, task_list in url_to_tasks.items():
+    pause_between = get_pause_between_requests()
+    for idx, (url, task_list) in enumerate(url_to_tasks.items()):
+        if idx > 0 and pause_between > 0:
+            time.sleep(pause_between)
         try:
             ads = search_ads(
                 url=url,
@@ -338,6 +347,7 @@ def run_periodic_ads() -> None:
                 pages=1,
                 max_age_minutes=MAX_AGE_MINUTES,
                 timeout=timeout,
+                block_threshold=block_threshold,
                 proxy_string=proxy_string,
                 proxy_change_url=proxy_change_url,
                 use_playwright=use_playwright,

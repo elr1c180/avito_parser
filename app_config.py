@@ -76,6 +76,30 @@ def get_avito_timeout() -> int:
         return 120
 
 
+def get_block_threshold() -> int:
+    """После скольких блокировок подряд менять IP (1 = сразу, 2–3 = реже ротация, как в parser_avito)."""
+    data = _load()
+    val = data.get("avito", {}).get("block_threshold")
+    if val is None:
+        return 2
+    try:
+        return max(1, min(5, int(val)))
+    except (TypeError, ValueError):
+        return 2
+
+
+def get_pause_between_requests() -> float:
+    """Пауза между запросами к Avito (сек), можно дробную. 0 = без паузы."""
+    data = _load()
+    val = data.get("avito", {}).get("pause_between_requests")
+    if val is None:
+        return 0.0
+    try:
+        return max(0.0, float(val))
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def get_django_settings() -> Dict[str, Any]:
     """Настройки для Django (secret_key, debug, allowed_hosts)."""
     data = _load()

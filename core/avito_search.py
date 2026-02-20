@@ -3,6 +3,7 @@
 Использует пакет avito/ и единый config.toml для прокси.
 """
 import logging
+import time as _time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -64,6 +65,7 @@ def _fetch_page_html(
     timeout: int,
     max_retries: int,
     retry_delay: int,
+    block_threshold: int = 2,
 ) -> str:
     """Возвращает HTML страницы: через Playwright или через HttpClient."""
     if use_playwright:
@@ -71,7 +73,13 @@ def _fetch_page_html(
         logger.info("Парсинг Avito (Playwright), URL: %s", next_url[:80])
         return fetch_html(url=next_url, proxy_string=proxy_string or None, timeout=timeout * 1000)
     proxy = build_proxy(AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or ""))
-    client = HttpClient(proxy=proxy, timeout=timeout, max_retries=max_retries, retry_delay=retry_delay)
+    client = HttpClient(
+        proxy=proxy,
+        timeout=timeout,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
+        block_threshold=block_threshold,
+    )
     response = client.request("GET", next_url)
     return response.text
 
@@ -85,6 +93,7 @@ def search_ads(
     timeout: int = 120,
     max_retries: int = 5,
     retry_delay: int = 5,
+    block_threshold: int = 2,
     proxy_string: Optional[str] = None,
     proxy_change_url: Optional[str] = None,
     use_playwright: bool = False,
@@ -105,7 +114,8 @@ def search_ads(
         html = None
         for ip_attempt in range(3):
             html = _fetch_page_html(
-                next_url, use_playwright, proxy_string, proxy_change_url, timeout, max_retries, retry_delay
+                next_url, use_playwright, proxy_string, proxy_change_url,
+                timeout, max_retries, retry_delay, block_threshold,
             )
             if "проблема с IP" not in html and "Доступ ограничен" not in html:
                 break
@@ -115,6 +125,8 @@ def search_ads(
                     requests.get(proxy_change_url, timeout=15)
                 except Exception:
                     pass
+                # Даём прокси время переключиться на новый IP перед повторным запросом
+                _time.sleep(8)
                 logger.warning("Avito: обнаружена блокировка по IP, смена IP и повтор (попытка %s/3)", ip_attempt + 1)
             else:
                 break

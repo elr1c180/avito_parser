@@ -3,9 +3,15 @@
 Используется при use_playwright=true для обхода 403 на сервере, по аналогии с parser_avito.
 """
 import logging
+import random
+import time
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Как в parser_avito: пауза перед запросом снижает детект (случайная 2–6 сек при прокси)
+PLAYWRIGHT_DELAY_MIN, PLAYWRIGHT_DELAY_MAX = 2, 6
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
 
 
 def _parse_proxy_for_playwright(proxy_string: Optional[str]) -> Optional[dict]:
@@ -41,6 +47,10 @@ def fetch_html(
         raise RuntimeError("Установите playwright: pip install playwright && python -m playwright install chromium") from None
 
     proxy = _parse_proxy_for_playwright(proxy_string)
+    if proxy:
+        delay = random.uniform(PLAYWRIGHT_DELAY_MIN, PLAYWRIGHT_DELAY_MAX)
+        logger.debug("Playwright: пауза %.1f сек перед запросом (как в parser_avito)", delay)
+        time.sleep(delay)
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -50,11 +60,10 @@ def fetch_html(
             context = browser.new_context(
                 proxy=proxy,
                 viewport={"width": 1920, "height": 1080},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                user_agent=USER_AGENT,
                 locale="ru-RU",
             )
             page = context.new_page()
-            # domcontentloaded — не ждём все картинки/скрипты, страница часто готова раньше; "load" даёт таймауты
             page.goto(url, wait_until="domcontentloaded", timeout=timeout)
             # Ждём появления блока с данными каталога (script с state), иначе приходит пустая оболочка
             try:
