@@ -35,7 +35,7 @@ def _keys_tree(obj, prefix="", depth=0, max_depth=4):
                 _keys_tree(v[0], prefix + "  ", depth + 1, max_depth)
 
 
-DEFAULT_URL = "https://www.avito.ru/astrahan/avtomobili/toyota/camry?localPriority=0&radius=200&s=104&searchRadius=200"
+DEFAULT_URL = "https://www.avito.ru/moskva/gruzoviki_i_spetstehnika/gruzoviki/toyota-ASgBAgICAkRUkAKOwA2aiTc?cd=1&radius=200&searchRadius=200"
 
 def main():
     args = [a for a in sys.argv[1:] if a != "--playwright"]

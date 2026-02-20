@@ -1,6 +1,10 @@
 """
 Загрузка страницы Avito через Playwright (реальный браузер).
-Используется при use_playwright=true для обхода 403 на сервере, по аналогии с parser_avito.
+Используется при use_playwright=true для обхода 403 на сервере.
+
+Почему с Playwright бывают проблемы: Avito может отдавать другой HTML для headless
+(редирект, пустая оболочка без каталога, «Доступ ограничен»). Если HTTP+прокси работают —
+оставьте use_playwright=false.
 """
 import logging
 import random
@@ -9,9 +13,13 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Как в parser_avito: пауза перед запросом снижает детект (случайная 2–6 сек при прокси)
 PLAYWRIGHT_DELAY_MIN, PLAYWRIGHT_DELAY_MAX = 2, 6
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+
+# Снижение детекта headless (часть сайтов смотрит на эти признаки)
+STEALTH_JS = """
+Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+"""
 
 
 def _parse_proxy_for_playwright(proxy_string: Optional[str]) -> Optional[dict]:
@@ -54,7 +62,13 @@ def fetch_html(
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
-            args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+            args=[
+                "--no-sandbox",
+                "--disable-setuid-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",
+            ],
         )
         try:
             context = browser.new_context(
@@ -62,14 +76,21 @@ def fetch_html(
                 viewport={"width": 1920, "height": 1080},
                 user_agent=USER_AGENT,
                 locale="ru-RU",
+                ignore_https_errors=True,
+                extra_http_headers={
+                    "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+                },
             )
+            context.add_init_script(STEALTH_JS)
             page = context.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=timeout)
-            # Ждём появления блока с данными каталога (script с state), иначе приходит пустая оболочка
+            # Даём время подгрузить скрипт с state (на части окружений он появляется с задержкой)
             try:
-                page.wait_for_selector("script[type='mime/invalid']", timeout=min(15000, timeout // 2))
+                page.wait_for_selector("script[type='mime/invalid']", timeout=min(20000, timeout // 2))
             except Exception:
                 pass
+            # Небольшая пауза на случай, если контент дописывается после появления скрипта
+            time.sleep(2)
             html = page.content()
             context.close()
             return html
