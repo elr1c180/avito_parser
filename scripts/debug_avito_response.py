@@ -99,7 +99,11 @@ def main():
     )
 
     if not catalog:
-        print("Каталог не найден (редирект/капча/блок?). Ключи state:", list(state.keys()) if isinstance(state, dict) else "—")
+        keys = list(state.keys()) if isinstance(state, dict) else "—"
+        print("Каталог не найден. Ключи state:", keys)
+        if len(html) < 100_000 and not state:
+            print("\nПохоже на капчу или блок (мало HTML, пустой state). На сервере попробуйте режим HTTP:")
+            print("  python3 scripts/debug_avito_response.py \"<та же ссылка>\"")
         return
 
     try:

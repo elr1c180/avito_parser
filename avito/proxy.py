@@ -1,7 +1,10 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 class Proxy(ABC):
@@ -42,4 +45,8 @@ class MobileProxy(Proxy):
         return f"http://{self.url}"
 
     def handle_block(self) -> None:
-        requests.get(self.change_ip_url, timeout=10)
+        """Запрос на смену IP. При таймауте/ошибке не падаем — следующий запрос может пойти с новым IP."""
+        try:
+            requests.get(self.change_ip_url, timeout=20)
+        except Exception as e:
+            logger.warning("Смена IP прокси не удалась (таймаут или ошибка): %s", e)
