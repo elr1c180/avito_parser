@@ -136,7 +136,7 @@ def search_ads(
             if (is_firewall or is_redirect_bot) and proxy_change_url and ip_attempt < 2:
                 try:
                     import requests
-                    requests.get(proxy_change_url, timeout=15)
+                    requests.get(proxy_change_url, timeout=30)
                 except Exception:
                     pass
                 _time.sleep(8)

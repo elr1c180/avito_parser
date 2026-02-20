@@ -47,7 +47,7 @@ def _fetch_html_http(url: str) -> str:
     if proxy_change_url:
         try:
             import requests
-            requests.get(proxy_change_url, timeout=15)
+            requests.get(proxy_change_url, timeout=30)
         except Exception as e:
             print(f"Смена IP: {e}", file=sys.stderr)
     client = HttpClient(proxy=proxy, timeout=30, max_retries=5, retry_delay=5, block_threshold=3)

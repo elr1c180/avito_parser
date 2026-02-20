@@ -126,7 +126,7 @@ def _change_proxy_ip_before_avito(proxy_change_url: Optional[str], use_playwrigh
     try:
         import requests
         logging.info("Смена IP мобильного прокси перед запросами к Avito…")
-        requests.get(proxy_change_url, timeout=15)
+        requests.get(proxy_change_url, timeout=30)
         time.sleep(PROXY_CHANGE_SLEEP_SEC)
         logging.info("Смена IP мобильного прокси перед запросами к Avito… ок")
     except Exception as e:
