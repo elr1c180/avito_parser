@@ -40,6 +40,16 @@ def _ensure_avito_query(url: str) -> str:
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
 
+def get_cities_for_user(user) -> list:
+    """Список городов для поиска: выбранные города или один основной город."""
+    selected = list(user.selected_cities.all()[:100])
+    if selected:
+        return selected
+    if user.city_id and getattr(user, "city", None):
+        return [user.city]
+    return []
+
+
 def _inject_city_into_avito_url(url: str, city_slug: str) -> str:
     """Подставляет город пользователя в путь Avito (первый сегмент после хоста)."""
     if not city_slug or not url.startswith("http"):
@@ -54,23 +64,24 @@ def _inject_city_into_avito_url(url: str, city_slug: str) -> str:
     return urlunparse((parsed.scheme, parsed.netloc, new_path, parsed.params, parsed.query, parsed.fragment))
 
 
-def _build_search_url(user, brand, model=None) -> Optional[str]:
+def _build_search_url(user, brand, model=None, city=None) -> Optional[str]:
     """
     Если у марки в БД заполнена «Ссылка поиска Avito» (avito_url) — используем её,
-    подставив город пользователя в путь, если он задан. Иначе собираем URL сами.
+    подставив город в путь. Иначе собираем URL по city/slug. city — для мульти-городов.
     """
+    use_city = city or (user and getattr(user, "city", None))
     avito_url = getattr(brand, "avito_url", None)
     if avito_url and str(avito_url).strip():
         url = str(avito_url).strip()
         if not url.startswith("http"):
             return None
-        if user and user.city and (user.city.slug or "").strip():
-            url = _inject_city_into_avito_url(url, user.city.slug)
+        if use_city and (getattr(use_city, "slug", None) or "").strip():
+            url = _inject_city_into_avito_url(url, use_city.slug)
         return _ensure_avito_query(url)
 
-    if not user.city or not getattr(brand, "slug", None) or not (brand.slug or "").strip():
+    if not use_city or not getattr(brand, "slug", None) or not (brand.slug or "").strip():
         return None
-    city_slug = (user.city.slug or "").strip().strip("/")
+    city_slug = (getattr(use_city, "slug", None) or "").strip().strip("/")
     brand_slug = (brand.slug or "").strip().strip("/")
     if not city_slug or not brand_slug:
         return None
@@ -166,40 +177,44 @@ def _send_telegram_photo(token: str, chat_id: int, photo_url: str, caption: str)
 
 def _search_tasks_for_user(user):
     """
-    Список (brand, model_or_None) для поиска: по выбранным маркам, без выбора моделей (всегда model=None).
+    Список (brand, model_or_None, city) для поиска: по выбранным маркам и по каждому выбранному городу.
     """
     tasks = []
+    cities = get_cities_for_user(user)
+    if not cities:
+        return tasks
     brands = list(user.selected_brands.all())
     selected_models = list(user.selected_models.select_related("brand").filter(slug__isnull=False).exclude(slug=""))
     models_by_brand = {}
     for m in selected_models:
         models_by_brand.setdefault(m.brand_id, []).append(m)
 
-    for brand in brands:
-        has_slug = (getattr(brand, "slug", None) or "").strip()
-        has_url = (getattr(brand, "avito_url", None) or "").strip()
-        if not has_slug and not has_url:
-            continue
-        models = models_by_brand.get(brand.id) or []
-        if models:
-            for m in models:
-                if (m.slug or "").strip():
-                    tasks.append((brand, m))
-        else:
-            tasks.append((brand, None))
+    for city in cities:
+        for brand in brands:
+            has_slug = (getattr(brand, "slug", None) or "").strip()
+            has_url = (getattr(brand, "avito_url", None) or "").strip()
+            if not has_slug and not has_url:
+                continue
+            models = models_by_brand.get(brand.id) or []
+            if models:
+                for m in models:
+                    if (m.slug or "").strip():
+                        tasks.append((brand, m, city))
+            else:
+                tasks.append((brand, None, city))
     return tasks
 
 
 async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int) -> None:
     chat_id = update.effective_chat.id
     user = await sync_to_async(
-        lambda: TelegramUser.objects.prefetch_related("selected_brands", "selected_models").select_related("city").get(id=user_id)
+        lambda: TelegramUser.objects.prefetch_related("selected_brands", "selected_models", "selected_cities").select_related("city").get(id=user_id)
     )()
     tasks = await sync_to_async(_search_tasks_for_user)(user)
     if not tasks:
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Нет ни одной пары марка+модель с заполненным slug для вашего города. Выберите город, марки и модели; в админке у марок и моделей должны быть slug (латиница).",
+            text="Нет ни одной пары марка+город. Выберите хотя бы один город (/city) и марки (/brands); у марок в админке должны быть slug.",
         )
         return
 
@@ -208,11 +223,13 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     use_playwright = get_use_playwright()
     timeout = get_avito_timeout()
 
-    for brand, model in tasks:
-        url = _build_search_url(user, brand, model)
+    for brand, model, city in tasks:
+        url = _build_search_url(user, brand, model, city=city)
         if not url:
             continue
         label = f"{brand.name} {model.name}" if model else brand.name
+        city_label = getattr(city, "name_ru", None) or str(city)
+        label = f"{label} ({city_label})"
         logging.info("Парсинг Avito: %s → %s", label, url)
         print(f"[Avito] Поиск: {label}\n[Avito] Ссылка: {url}", flush=True)
         await context.bot.send_message(chat_id=chat_id, text=f"Ищу {label}…")
@@ -299,9 +316,8 @@ def run_periodic_ads() -> None:
     users = list(
         TelegramUser.objects.filter(selected_brands__isnull=False)
         .exclude(chat_id__isnull=True)
-        .exclude(city__isnull=True)
         .select_related("city")
-        .prefetch_related("selected_brands", "selected_models")
+        .prefetch_related("selected_brands", "selected_models", "selected_cities")
         .distinct()
     )
     if not users:
@@ -309,8 +325,8 @@ def run_periodic_ads() -> None:
 
     url_to_tasks = {}
     for user in users:
-        for brand, model in _search_tasks_for_user(user):
-            url = _build_search_url(user, brand, model)
+        for brand, model, city in _search_tasks_for_user(user):
+            url = _build_search_url(user, brand, model, city=city)
             if url:
                 url_to_tasks.setdefault(url, []).append((user, brand, model))
 

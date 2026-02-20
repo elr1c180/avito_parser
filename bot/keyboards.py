@@ -6,8 +6,9 @@ CITIES_PER_PAGE = 12
 MODELS_PER_PAGE = 12
 
 
-def get_cities_keyboard(page: int = 0) -> InlineKeyboardMarkup:
-    """Клавиатура выбора города (пагинация)."""
+def get_cities_keyboard(page: int = 0, selected_ids: set = None) -> InlineKeyboardMarkup:
+    """Клавиатура выбора городов (мультивыбор, пагинация). selected_ids — set(id) выбранных."""
+    selected_ids = selected_ids or set()
     qs = City.objects.all().order_by("name_ru")
     total = qs.count()
     if total == 0:
@@ -18,13 +19,13 @@ def get_cities_keyboard(page: int = 0) -> InlineKeyboardMarkup:
     buttons = []
     row = []
     for c in cities:
-        row.append(InlineKeyboardButton(c.name_ru, callback_data=f"city_{c.id}"))
+        prefix = "✓ " if c.id in selected_ids else ""
+        row.append(InlineKeyboardButton(f"{prefix}{c.name_ru}", callback_data=f"city_{c.id}"))
         if len(row) == 2:
             buttons.append(row)
             row = []
     if row:
         buttons.append(row)
-    # Навигация по страницам
     total_pages = (total + CITIES_PER_PAGE - 1) // CITIES_PER_PAGE
     nav = []
     if page > 0:
@@ -33,6 +34,7 @@ def get_cities_keyboard(page: int = 0) -> InlineKeyboardMarkup:
         nav.append(InlineKeyboardButton("Вперёд ▶", callback_data=f"city_page_{page + 1}"))
     if nav:
         buttons.append(nav)
+    buttons.append([InlineKeyboardButton("Готово", callback_data="city_done")])
     return InlineKeyboardMarkup(buttons)
 
 

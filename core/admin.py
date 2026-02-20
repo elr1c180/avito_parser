@@ -32,11 +32,11 @@ class TelegramUserAdmin(admin.ModelAdmin):
     list_filter = []
     search_fields = ["username", "chat_id"]
     ordering = ["id"]
-    filter_horizontal = ["selected_brands", "selected_models"]
+    filter_horizontal = ["selected_brands", "selected_models", "selected_cities"]
     raw_id_fields = ["city"]
 
     def get_queryset(self, request):
-        return super().get_queryset(request).prefetch_related("selected_brands", "selected_models", "city")
+        return super().get_queryset(request).prefetch_related("selected_brands", "selected_models", "selected_cities", "city")
 
     @admin.display(description="Выбранные марки")
     def selected_brands_display(self, obj):

@@ -102,18 +102,30 @@ def search_ads(
     for page_num in range(max(1, pages)):
         if page_num > 0:
             logger.info("Парсинг Avito, страница %s, URL: %s", page_num + 1, next_url)
-        html = _fetch_page_html(
-            next_url, use_playwright, proxy_string, proxy_change_url, timeout, max_retries, retry_delay
-        )
-        state = extract_state_json(html)
+        html = None
+        for ip_attempt in range(3):
+            html = _fetch_page_html(
+                next_url, use_playwright, proxy_string, proxy_change_url, timeout, max_retries, retry_delay
+            )
+            if "проблема с IP" not in html and "Доступ ограничен" not in html:
+                break
+            if proxy_change_url and ip_attempt < 2:
+                try:
+                    import requests
+                    requests.get(proxy_change_url, timeout=15)
+                except Exception:
+                    pass
+                logger.warning("Avito: обнаружена блокировка по IP, смена IP и повтор (попытка %s/3)", ip_attempt + 1)
+            else:
+                break
+        state = extract_state_json(html or "")
         catalog = (
             state.get("data", {}).get("catalog")
             or state.get("listing", {}).get("data", {}).get("catalog")
             or {}
         )
         if not catalog:
-            # Показать, что пришло от парсера при пустом каталоге
-            _log_avito_response_debug(html, state, next_url)
+            _log_avito_response_debug(html or "", state, next_url)
             break
 
         try:

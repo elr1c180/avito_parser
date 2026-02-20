@@ -32,11 +32,25 @@ def get_user_by_password(password: str) -> Optional[TelegramUser]:
 
 
 async def ask_city(update: Update, context: ContextTypes.DEFAULT_TYPE, user: TelegramUser) -> None:
-    """Показать выбор города (первая страница)."""
+    """Показать выбор городов (мультивыбор, можно несколько)."""
     chat_id = update.effective_chat.id
-    USER_STATE[chat_id] = {"state": "city", "user": user}
-    keyboard = await sync_to_async(get_cities_keyboard)(0)
-    await context.bot.send_message(chat_id=chat_id, text="Выберите город:", reply_markup=keyboard)
+
+    def _initial_selected():
+        ids = list(user.selected_cities.values_list("id", flat=True)[:100])
+        if ids:
+            return set(ids)
+        if user.city_id:
+            return {user.city_id}
+        return set()
+
+    selected = await sync_to_async(_initial_selected)()
+    USER_STATE[chat_id] = {"state": "city", "user": user, "selected": selected, "page": 0}
+    keyboard = await sync_to_async(get_cities_keyboard)(0, selected)
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="Выберите один или несколько городов (галочка — выбрано), затем «Готово»:",
+        reply_markup=keyboard,
+    )
 
 
 async def ask_brands(update: Update, context: ContextTypes.DEFAULT_TYPE, user: TelegramUser) -> None:
@@ -117,8 +131,42 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         state = USER_STATE.get(chat_id, {})
         if state.get("state") != "city":
             return
-        keyboard = await sync_to_async(get_cities_keyboard)(page)
-        await query.edit_message_text("Выберите город:", reply_markup=keyboard)
+        state["page"] = page
+        selected = state.get("selected", set())
+        keyboard = await sync_to_async(get_cities_keyboard)(page, selected)
+        await query.edit_message_text(
+            "Выберите один или несколько городов (галочка — выбрано), затем «Готово»:",
+            reply_markup=keyboard,
+        )
+        return
+
+    if data == "city_done":
+        state = USER_STATE.get(chat_id, {})
+        if state.get("state") != "city":
+            return
+        user = state.get("user")
+        if not user:
+            return
+        selected = state.get("selected", set())
+        if not selected:
+            await query.edit_message_text("Выберите хотя бы один город.")
+            return
+
+        def _save_cities():
+            user.selected_cities.set(City.objects.filter(id__in=list(selected)))
+            first_id = next(iter(selected), None)
+            if first_id:
+                user.city_id = first_id
+            user.save(update_fields=["city_id"])
+
+        await sync_to_async(_save_cities)()
+        names = await sync_to_async(lambda: list(City.objects.filter(id__in=selected).values_list("name_ru", flat=True)))()
+        USER_STATE[chat_id] = {"state": "brands", "selected": set()}
+        keyboard = await sync_to_async(get_brands_keyboard)(set())
+        await query.edit_message_text(
+            f"Города: {', '.join(names)}. Выберите марки автомобилей:",
+            reply_markup=keyboard,
+        )
         return
 
     if data.startswith("city_"):
@@ -129,22 +177,15 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         state = USER_STATE.get(chat_id, {})
         if state.get("state") != "city":
             return
-        user = state.get("user")
-        if not user:
-            return
-
-        def _save_city():
-            user.city_id = city_id
-            user.save(update_fields=["city_id"])
-
-        await sync_to_async(_save_city)()
-        city = await sync_to_async(City.objects.get)(id=city_id)
-        USER_STATE[chat_id] = {"state": "brands", "selected": set()}
-        keyboard = await sync_to_async(get_brands_keyboard)(set())
-        await query.edit_message_text(
-            f"Город: {city.name_ru}. Выберите марки автомобилей:",
-            reply_markup=keyboard,
-        )
+        selected = state.get("selected", set())
+        if city_id in selected:
+            selected.discard(city_id)
+        else:
+            selected.add(city_id)
+        state["selected"] = selected
+        page = state.get("page", 0)
+        keyboard = await sync_to_async(get_cities_keyboard)(page, selected)
+        await query.edit_message_reply_markup(reply_markup=keyboard)
         return
 
     if data == "brands_done":

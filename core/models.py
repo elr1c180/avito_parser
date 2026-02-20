@@ -88,7 +88,13 @@ class TelegramUser(models.Model):
         null=True,
         blank=True,
         related_name="users",
-        verbose_name="Город",
+        verbose_name="Город (основной, если не заданы выбранные)",
+    )
+    selected_cities = models.ManyToManyField(
+        City,
+        blank=True,
+        related_name="users_by_selected_cities",
+        verbose_name="Выбранные города (поиск по всем)",
     )
     selected_brands = models.ManyToManyField(Brand, blank=True, verbose_name="Выбранные марки")
     selected_models = models.ManyToManyField(

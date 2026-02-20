@@ -63,6 +63,19 @@ class HttpClient:
                     )
                     time.sleep(self.retry_delay)
                     continue
+                # Страница «Доступ ограничен: проблема с IP» приходит с 200
+                if response.status_code == 200:
+                    text = (response.text or "")
+                    if "проблема с IP" in text or "Доступ ограничен" in text:
+                        last_status = 403
+                        self._block_attempts += 1
+                        if self._block_attempts >= self.block_threshold:
+                            logger.warning("Avito: блокировка по IP (страница «Доступ ограничен») — смена IP (попытка %s/%s)", attempt, self.max_retries)
+                            self.proxy.handle_block()
+                            self._block_attempts = 0
+                        logger.warning("Avito attempt %s/%s: страница блокировки по IP. URL: %s", attempt, self.max_retries, url[:80])
+                        time.sleep(self.retry_delay)
+                        continue
                 response.raise_for_status()
                 self._block_attempts = 0
                 return response
