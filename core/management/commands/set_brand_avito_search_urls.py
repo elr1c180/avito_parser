@@ -1,6 +1,6 @@
 """
 Проставить у каждой марки ссылку поиска Avito в формате:
-  https://www.avito.ru/moskva/avtomobili/{slug}-ASgBAgICAUTgtg3GmSg?cd=1&localPriority=0&radius=75&s=104&searchRadius=75
+  https://www.avito.ru/moskva/avtomobili/{slug}-ASgBAgICAUTgtg3GmSg?cd=1&localPriority=0&radius=200&s=104&searchRadius=200
 Один суффикс для всех марок (из примера объявления). Меняется только slug марки перед дефисом.
 При поиске город (moskva) подменяется на город пользователя в bot/services.
 
@@ -15,7 +15,7 @@ from core.models import Brand
 AVITO_BASE = "https://www.avito.ru"
 CITY_PLACEHOLDER = "moskva"
 SEGMENT = "avtomobili"
-QUERY = "cd=1&localPriority=0&radius=75&s=104&searchRadius=75"
+QUERY = "cd=1&localPriority=0&radius=200&s=104&searchRadius=200"
 # Один суффикс из примера объявления для раздела avtomobili
 AVITO_SUFFIX = "ASgBAgICAUTgtg3GmSg"
 

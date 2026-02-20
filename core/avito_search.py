@@ -112,25 +112,38 @@ def search_ads(
         if page_num > 0:
             logger.info("Парсинг Avito, страница %s, URL: %s", page_num + 1, next_url)
         html = None
+        state = {}
         for ip_attempt in range(3):
             html = _fetch_page_html(
                 next_url, use_playwright, proxy_string, proxy_change_url,
                 timeout, max_retries, retry_delay, block_threshold,
             )
-            if "проблема с IP" not in html and "Доступ ограничен" not in html:
+            state = extract_state_json(html or "")
+            catalog = (
+                state.get("data", {}).get("catalog")
+                or state.get("listing", {}).get("data", {}).get("catalog")
+                or {}
+            )
+            if catalog:
                 break
-            if proxy_change_url and ip_attempt < 2:
+            # Нет каталога: либо страница блокировки по IP, либо ответ «редирект/бот»
+            is_firewall = "проблема с IP" in (html or "") or "Доступ ограничен" in (html or "")
+            data_keys = set((state.get("data") or {}).keys()) if isinstance(state.get("data"), dict) else set()
+            is_redirect_bot = (
+                "redirect" in state or "isSuspenseRedirect" in state or "isBot" in state
+                or data_keys <= {"status", "redirected", "url"}
+            )
+            if (is_firewall or is_redirect_bot) and proxy_change_url and ip_attempt < 2:
                 try:
                     import requests
                     requests.get(proxy_change_url, timeout=15)
                 except Exception:
                     pass
-                # Даём прокси время переключиться на новый IP перед повторным запросом
                 _time.sleep(8)
-                logger.warning("Avito: обнаружена блокировка по IP, смена IP и повтор (попытка %s/3)", ip_attempt + 1)
+                reason = "блок по IP" if is_firewall else "редирект/бот"
+                logger.warning("Avito: нет каталога (%s), смена IP и повтор (попытка %s/3)", reason, ip_attempt + 1)
             else:
                 break
-        state = extract_state_json(html or "")
         catalog = (
             state.get("data", {}).get("catalog")
             or state.get("listing", {}).get("data", {}).get("catalog")

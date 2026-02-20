@@ -27,7 +27,7 @@ parse_views = false
 save_xlsx = true
 use_webdriver = true
 # На сервере при 403 включите: запросы через браузер (Playwright), как в parser_avito
-use_playwright = true
+use_playwright = false
 # Таймаут запроса к Avito (секунды). При Playwright на сервере ставьте 120–180
 timeout = 240
 # После скольких блокировок подряд менять IP (1 = сразу, 2–3 = реже, как в parser_avito)

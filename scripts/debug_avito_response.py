@@ -15,7 +15,10 @@ from app_config import get_proxy_config
 from avito.client import HttpClient
 from avito.dto import AvitoConfig
 from avito.extract import extract_state_json
+from avito.models import ItemsResponse
 from avito.proxy_factory import build_proxy
+from avito.utils import get_first_image
+from pydantic import ValidationError
 
 
 def _keys_tree(obj, prefix="", depth=0, max_depth=4):
@@ -117,6 +120,45 @@ def main():
     )
     print("\n--- Что парсер подставляет в catalog (сейчас) ---")
     print("Пусто?" if not catalog_used else f"Ключи: {list(catalog_used.keys())}")
+
+    # Парсинг объявлений (как в core/avito_search) — показать, что данные реально забираются
+    print("\n--- Объявления (распарсено из catalog) ---")
+    if not catalog_used:
+        print("Каталог пуст — объявления не парсятся.")
+    else:
+        try:
+            items = ItemsResponse(**catalog_used).items
+            print(f"Всего объявлений на странице: {len(items)}")
+            show_max = 10
+            for i, it in enumerate(items[:show_max]):
+                if not getattr(it, "id", None) or not getattr(it, "urlPath", None):
+                    continue
+                try:
+                    ad_id = int(it.id) if isinstance(it.id, int) else int((it.id or {}).get("value", 0))
+                except (TypeError, ValueError, AttributeError):
+                    ad_id = 0
+                title = (getattr(it, "title", None) or "").strip() or "(без названия)"
+                price_str = "—"
+                if getattr(it, "priceDetailed", None) and getattr(it.priceDetailed, "value", None) is not None:
+                    try:
+                        price_str = f"{int(it.priceDetailed.value):,} ₽".replace(",", " ")
+                    except (TypeError, ValueError):
+                        price_str = getattr(it.priceDetailed, "string", None) or "—"
+                elif getattr(it, "priceDetailed", None) and getattr(it.priceDetailed, "string", None):
+                    price_str = it.priceDetailed.string
+                url_path = (it.urlPath or "").strip()
+                full_url = f"https://www.avito.ru{url_path}" if url_path else ""
+                location = getattr(it.location, "name", None) if getattr(it, "location", None) else None
+                img = get_first_image(it)
+                loc_s = f" | {location}" if location else ""
+                img_s = " [есть фото]" if img else ""
+                print(f"  {i + 1}. id={ad_id} | {title[:50]}{'…' if len(title) > 50 else ''}")
+                print(f"      {price_str}{loc_s}{img_s}")
+                print(f"      {full_url}")
+            if len(items) > show_max:
+                print(f"  … и ещё {len(items) - show_max} объявлений")
+        except ValidationError as e:
+            print("Ошибка валидации (catalog не совпадает с ItemsResponse):", e)
 
 
 if __name__ == "__main__":

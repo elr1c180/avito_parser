@@ -24,7 +24,7 @@ from core.models import Brand, CarModel, SeenAd, TelegramUser
 AVITO_BASE = "https://www.avito.ru"
 AVITO_CARS_SEGMENT = "avtomobili"
 # Обязательные параметры поиска в каждой ссылке Avito
-AVITO_QUERY_PARAMS = {"localPriority": "0", "radius": "200", "s": "104", "searchRadius": "200"}
+AVITO_QUERY_PARAMS = {"cd": "1", "localPriority": "0", "radius": "200", "s": "104", "searchRadius": "200"}
 AVITO_QUERY = "&".join(f"{k}={v}" for k, v in AVITO_QUERY_PARAMS.items())
 
 
@@ -111,6 +111,26 @@ SEND_INTERVAL_SEC = 3
 # Пауза между парсингом разных марок (снижает риск блокировки прокси)
 PAUSE_BETWEEN_BRANDS_SEC = 8
 MSK = ZoneInfo("Europe/Moscow")
+
+# Пауза после смены IP мобильного прокси (как в debug-скрипте)
+PROXY_CHANGE_SLEEP_SEC = 8
+
+
+def _change_proxy_ip_before_avito(proxy_change_url: Optional[str], use_playwright: bool) -> None:
+    """
+    Один раз перед запросами к Avito дергает смену IP мобильного прокси (как в scripts/debug_avito_response.py).
+    При использовании Playwright или без proxy_change_url ничего не делает.
+    """
+    if not proxy_change_url or use_playwright:
+        return
+    try:
+        import requests
+        logging.info("Смена IP мобильного прокси перед запросами к Avito…")
+        requests.get(proxy_change_url, timeout=15)
+        time.sleep(PROXY_CHANGE_SLEEP_SEC)
+        logging.info("Смена IP мобильного прокси перед запросами к Avito… ок")
+    except Exception as e:
+        logging.warning("Смена IP перед Avito не удалась: %s", e)
 
 
 def _format_published_at(dt: Optional[datetime]) -> str:
@@ -225,6 +245,9 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     block_threshold = get_block_threshold()
     pause_between = get_pause_between_requests()
 
+    # Сначала смена IP (как в debug-скрипте), чтобы не получать ответ «редирект/бот» без каталога
+    await asyncio.to_thread(_change_proxy_ip_before_avito, proxy_change_url, use_playwright)
+
     for i, (brand, model, city) in enumerate(tasks):
         if i > 0 and pause_between > 0:
             await asyncio.sleep(pause_between)
@@ -335,6 +358,9 @@ def run_periodic_ads() -> None:
             url = _build_search_url(user, brand, model, city=city)
             if url:
                 url_to_tasks.setdefault(url, []).append((user, brand, model))
+
+    # Сначала смена IP (как в debug-скрипте), чтобы не получать ответ «редирект/бот» без каталога
+    _change_proxy_ip_before_avito(proxy_change_url, use_playwright)
 
     pause_between = get_pause_between_requests()
     for idx, (url, task_list) in enumerate(url_to_tasks.items()):
