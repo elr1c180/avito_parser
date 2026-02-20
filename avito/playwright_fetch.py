@@ -54,7 +54,8 @@ def fetch_html(
                 locale="ru-RU",
             )
             page = context.new_page()
-            page.goto(url, wait_until="load", timeout=timeout)
+            # domcontentloaded — не ждём все картинки/скрипты, страница часто готова раньше; "load" даёт таймауты
+            page.goto(url, wait_until="domcontentloaded", timeout=timeout)
             # Ждём появления блока с данными каталога (script с state), иначе приходит пустая оболочка
             try:
                 page.wait_for_selector("script[type='mime/invalid']", timeout=min(15000, timeout // 2))

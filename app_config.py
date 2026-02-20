@@ -64,6 +64,18 @@ def get_use_playwright() -> bool:
     return str(val).lower() in ("1", "true", "yes")
 
 
+def get_avito_timeout() -> int:
+    """Таймаут запроса к Avito (секунды). Для Playwright на сервере лучше 120–180."""
+    data = _load()
+    val = data.get("avito", {}).get("timeout")
+    if val is None:
+        return 120
+    try:
+        return max(30, int(val))
+    except (TypeError, ValueError):
+        return 120
+
+
 def get_django_settings() -> Dict[str, Any]:
     """Настройки для Django (secret_key, debug, allowed_hosts)."""
     data = _load()

@@ -50,7 +50,7 @@ class HttpClient:
             try:
                 with self._build_client() as client:
                     response = client.request(method, url, **kwargs)
-                if response.status_code in (401, 403, 429):
+                if response.status_code in (401, 403, 429, 502, 503, 504):
                     last_status = response.status_code
                     self._block_attempts += 1
                     if self._block_attempts >= self.block_threshold:
@@ -58,7 +58,7 @@ class HttpClient:
                         self.proxy.handle_block()
                         self._block_attempts = 0
                     logger.warning(
-                        "Avito attempt %s/%s: ответ %s (блок/лимит). URL: %s",
+                        "Avito attempt %s/%s: ответ %s. URL: %s",
                         attempt, self.max_retries, last_status, url[:80],
                     )
                     time.sleep(self.retry_delay)

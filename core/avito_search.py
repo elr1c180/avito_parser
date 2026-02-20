@@ -82,7 +82,7 @@ def search_ads(
     max_price: Optional[int] = None,
     pages: int = 1,
     max_age_minutes: Optional[int] = 10,
-    timeout: int = 60,
+    timeout: int = 120,
     max_retries: int = 5,
     retry_delay: int = 5,
     proxy_string: Optional[str] = None,

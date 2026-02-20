@@ -28,6 +28,8 @@ save_xlsx = true
 use_webdriver = false
 # На сервере при 403 включите: запросы через браузер (Playwright), как в parser_avito
 use_playwright = false
+# Таймаут запроса к Avito (секунды). При Playwright на сервере ставьте 120–180
+# timeout = 120
 cookies_api_key = ""
 # Пароль входа в TG-бота и админку (задайте свой)
 bot_password = ""

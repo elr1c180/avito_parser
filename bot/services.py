@@ -16,7 +16,7 @@ from asgiref.sync import sync_to_async
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from app_config import get_bot_token, get_proxy_config, get_use_playwright
+from app_config import get_avito_timeout, get_bot_token, get_proxy_config, get_use_playwright
 from core.avito_search import AvitoAd, search_ads
 from core.models import Brand, CarModel, SeenAd, TelegramUser
 
@@ -206,6 +206,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     max_price = user.max_price
     proxy_string, proxy_change_url = get_proxy_config()
     use_playwright = get_use_playwright()
+    timeout = get_avito_timeout()
 
     for brand, model in tasks:
         url = _build_search_url(user, brand, model)
@@ -222,6 +223,7 @@ async def send_ads_for_user(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 max_price=max_price,
                 pages=1,
                 max_age_minutes=MAX_AGE_MINUTES,
+                timeout=timeout,
                 proxy_string=proxy_string,
                 proxy_change_url=proxy_change_url,
                 use_playwright=use_playwright,
@@ -293,6 +295,7 @@ def run_periodic_ads() -> None:
         return
     proxy_string, proxy_change_url = get_proxy_config()
     use_playwright = get_use_playwright()
+    timeout = get_avito_timeout()
     users = list(
         TelegramUser.objects.filter(selected_brands__isnull=False)
         .exclude(chat_id__isnull=True)
@@ -318,6 +321,7 @@ def run_periodic_ads() -> None:
                 max_price=None,
                 pages=1,
                 max_age_minutes=MAX_AGE_MINUTES,
+                timeout=timeout,
                 proxy_string=proxy_string,
                 proxy_change_url=proxy_change_url,
                 use_playwright=use_playwright,
