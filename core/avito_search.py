@@ -66,12 +66,12 @@ def _fetch_page_html(
     max_retries: int,
     retry_delay: int,
     block_threshold: int = 3,
-) -> str:
-    """Возвращает HTML страницы: через Playwright или через HttpClient (логика как в parser_avito)."""
+) -> tuple:
+    """Возвращает (html, status_code): через Playwright или через HttpClient."""
     if use_playwright:
         from avito.playwright_fetch import fetch_html
         logger.info("Парсинг Avito (Playwright), URL: %s", next_url[:80])
-        return fetch_html(url=next_url, proxy_string=proxy_string or None, timeout=timeout * 1000)
+        return fetch_html(url=next_url, proxy_string=proxy_string or None, timeout=timeout * 1000), 200
     proxy = build_proxy(AvitoConfig(proxy_string=proxy_string or "", proxy_change_url=proxy_change_url or ""))
     client = HttpClient(
         proxy=proxy,
@@ -81,7 +81,7 @@ def _fetch_page_html(
         block_threshold=block_threshold,
     )
     response = client.request("GET", next_url)
-    return response.text
+    return response.text, response.status_code
 
 
 def search_ads(
@@ -112,9 +112,10 @@ def search_ads(
         if page_num > 0:
             logger.info("Парсинг Avito, страница %s, URL: %s", page_num + 1, next_url)
         html = None
+        status_code = 0
         state = {}
         for ip_attempt in range(3):
-            html = _fetch_page_html(
+            html, status_code = _fetch_page_html(
                 next_url, use_playwright, proxy_string, proxy_change_url,
                 timeout, max_retries, retry_delay, block_threshold,
             )
@@ -124,9 +125,15 @@ def search_ads(
                 or state.get("listing", {}).get("data", {}).get("catalog")
                 or {}
             )
-            if catalog:
+            has_catalog = bool(catalog)
+            print(
+                f"[Avito] HTTP {status_code} | HTML: {len(html or '')} символов | "
+                f"Каталог: {'да' if has_catalog else 'нет'} | "
+                f"Ключи state: {list(state.keys()) if isinstance(state, dict) else '—'}",
+                flush=True,
+            )
+            if has_catalog:
                 break
-            # Нет каталога: либо страница блокировки по IP, либо ответ «редирект/бот»
             is_firewall = "проблема с IP" in (html or "") or "Доступ ограничен" in (html or "")
             data_keys = set((state.get("data") or {}).keys()) if isinstance(state.get("data"), dict) else set()
             is_redirect_bot = (

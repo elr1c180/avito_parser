@@ -30,7 +30,7 @@ def main() -> None:
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
         scheduler = BackgroundScheduler()
-        scheduler.add_job(run_periodic_ads, "interval", minutes=5, id="avito_ads")
+        scheduler.add_job(run_periodic_ads, "interval", minutes=15, id="avito_ads")
         scheduler.start()
     except ImportError:
         pass
