@@ -1,7 +1,7 @@
 const path = require("path");
 const root = path.resolve(__dirname);
 // На сервере используем Python из venv (на Windows: venv\\Scripts\\python.exe)
-const venvPython = path.join(root, "venv", "bin", "python");
+const venvPython = path.join(root, "venv", "bin", "python3");
 
 module.exports = {
   apps: [
