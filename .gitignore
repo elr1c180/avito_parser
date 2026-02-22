@@ -15,5 +15,4 @@ env/
 .vscode/
 .DS_Store
 *.swp
-.env
 .env.local
