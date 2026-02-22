@@ -1,13 +1,11 @@
 const path = require("path");
 const root = path.resolve(__dirname);
-// На сервере используем Python из venv (на Windows: venv\\Scripts\\python.exe)
-const venvPython = path.join(root, "venv", "bin", "python3");
 
 module.exports = {
   apps: [
     {
       name: "avito-admin",
-      script: venvPython,
+      script: "python3",
       args: "-m gunicorn config.wsgi:application --bind 0.0.0.0:8000",
       cwd: root,
       interpreter: "none",
@@ -16,7 +14,7 @@ module.exports = {
     {
       name: "avito-bot",
       script: "bot.py",
-      interpreter: venvPython,
+      interpreter: "python3",
       cwd: root,
     },
   ],
