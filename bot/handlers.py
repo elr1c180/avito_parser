@@ -61,6 +61,7 @@ async def ask_brands(update: Update, context: ContextTypes.DEFAULT_TYPE, user: T
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    print(f"[DEBUG /start] update_id={update.update_id} chat_id={update.effective_chat.id}", flush=True)
     chat_id = update.effective_chat.id
     username = update.effective_user.username if update.effective_user else None
     if chat_id in PENDING_PASSWORD:
